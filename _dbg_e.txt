@@ -1,0 +1,4 @@
+E:\other\各种资源_Project\各种资源\win-bg-tool\models\_fmt_test.jpg True
+E:\other\各种资源_Project\各种资源\win-bg-tool\models\t_a.png
+nav count 3
+ok

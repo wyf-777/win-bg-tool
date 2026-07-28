@@ -1,0 +1,7 @@
+# win-bg-tool — Python 3.11+
+PySide6>=6.6
+rembg>=2.0.56
+onnxruntime>=1.16
+# onnxruntime wheels often lag NumPy 2; pin until ORT is rebuilt for your env
+numpy>=1.26,<2.0
+Pillow>=10.0
