@@ -1,4 +1,0 @@
-cat 15
-dlg
-mw
-ok

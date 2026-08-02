@@ -1,4 +1,0 @@
-pages 2
-settings open True
-closed True
-ok
