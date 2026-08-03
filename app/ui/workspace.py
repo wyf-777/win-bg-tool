@@ -167,6 +167,18 @@ class Workspace(QFrame):
         elif cur is self.lightbox:
             self.lightbox.set_hold_peek(on)
 
+    def toggle_side_by_side(self) -> None:
+        """Keyboard shortcut: same as「左右对照」button on single / lightbox."""
+        cur = self.stack.currentWidget()
+        btn = None
+        if cur is self.canvas and hasattr(self.canvas, "btn_side_by_side"):
+            btn = self.canvas.btn_side_by_side
+        elif cur is self.lightbox and hasattr(self.lightbox, "btn_side_by_side"):
+            btn = self.lightbox.btn_side_by_side
+        if btn is None or not btn.isEnabled() or not btn.isVisible():
+            return
+        btn.setChecked(not btn.isChecked())
+
     def set_items(self, items: List[ImageItem]) -> None:
         self._items = list(items)
         n = len(self._items)

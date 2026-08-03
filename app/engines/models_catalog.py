@@ -110,6 +110,7 @@ MODEL_CATALOG: Sequence[ModelInfo] = (
     ),
 )
 
+# Product default in development (full quality). Packaged exe prefers shipped u2netp.
 DEFAULT_MODEL_ID = "isnet-general-use"
 
 # Fallback chain when requested model fails to load
@@ -118,6 +119,15 @@ FALLBACK_MODEL_IDS: Sequence[str] = (
     "u2net",
     "u2netp",
 )
+
+
+def product_default_model_id() -> str:
+    """Default model id for new installs / missing settings."""
+    from app.runtime_paths import BUNDLED_MODEL_ID, is_frozen
+
+    if is_frozen():
+        return BUNDLED_MODEL_ID  # packaged builds ship U²-Net 轻量
+    return DEFAULT_MODEL_ID
 
 
 def catalog_ids() -> List[str]:
@@ -136,12 +146,10 @@ def is_known_model(model_id: str) -> bool:
 
 
 def default_models_dir() -> Path:
-    """Project models/ directory (same as rembg U2NET_HOME for this app)."""
-    # app/engines/models_catalog.py → project root / models
-    root = Path(__file__).resolve().parents[2]
-    path = root / "models"
-    path.mkdir(parents=True, exist_ok=True)
-    return path
+    """Writable models/ directory (same as rembg U2NET_HOME for this app)."""
+    from app.runtime_paths import models_dir
+
+    return models_dir()
 
 
 def is_model_downloaded(
@@ -183,6 +191,113 @@ def model_download_status(
     if is_model_partial(model_id, models_dir):
         return "partial"
     return "missing"
+
+
+def catalog_disk_snapshot(
+    models_dir: Optional[Path] = None,
+) -> dict[str, tuple[str, int]]:
+    """
+    One directory listing for the whole catalog.
+
+    Returns {model_id: (status, size_bytes)} where status is
+    downloaded | partial | missing. size_bytes is .onnx size when downloaded,
+    .part size when partial, else 0.
+
+    Prefer this in settings UI instead of per-model is_file/stat loops.
+    """
+    d = Path(models_dir) if models_dir else default_models_dir()
+    sizes: dict[str, int] = {}
+    try:
+        for p in d.iterdir():
+            if not p.is_file():
+                continue
+            try:
+                sizes[p.name] = int(p.stat().st_size)
+            except OSError:
+                continue
+    except OSError:
+        sizes = {}
+
+    out: dict[str, tuple[str, int]] = {}
+    for m in MODEL_CATALOG:
+        onnx_n = f"{m.id}.onnx"
+        part_n = f"{m.id}.onnx.part"
+        onnx_sz = sizes.get(onnx_n, 0)
+        part_sz = sizes.get(part_n, 0)
+        if onnx_sz > 1024:
+            out[m.id] = ("downloaded", onnx_sz)
+        elif part_sz > 1024:
+            out[m.id] = ("partial", part_sz)
+        else:
+            out[m.id] = ("missing", 0)
+    return out
+
+
+def model_onnx_path(model_id: str, models_dir: Optional[Path] = None) -> Path:
+    d = Path(models_dir) if models_dir else default_models_dir()
+    return d / f"{(model_id or '').strip()}.onnx"
+
+
+def model_part_file_path(model_id: str, models_dir: Optional[Path] = None) -> Path:
+    d = Path(models_dir) if models_dir else default_models_dir()
+    return d / f"{(model_id or '').strip()}.onnx.part"
+
+
+def model_file_size_bytes(
+    model_id: str, models_dir: Optional[Path] = None
+) -> int:
+    """Size of complete .onnx on disk, or 0."""
+    path = model_onnx_path(model_id, models_dir)
+    try:
+        if path.is_file():
+            return int(path.stat().st_size)
+    except OSError:
+        pass
+    return 0
+
+
+def delete_model_files(
+    model_id: str, models_dir: Optional[Path] = None
+) -> tuple[bool, str]:
+    """
+    Remove local .onnx and .part for *model_id*.
+    Returns (removed_anything, human message).
+    """
+    mid = (model_id or "").strip()
+    if not mid:
+        return False, "无效的模型 id"
+    d = Path(models_dir) if models_dir else default_models_dir()
+    removed: list[str] = []
+    for path in (d / f"{mid}.onnx", d / f"{mid}.onnx.part"):
+        try:
+            if path.is_file():
+                path.unlink()
+                removed.append(path.name)
+        except OSError as exc:
+            return False, f"无法删除 {path.name}：{exc}"
+    if not removed:
+        return False, "本地没有该模型的文件"
+    return True, f"已删除：{', '.join(removed)}"
+
+
+def pick_fallback_model_id(
+    *,
+    exclude: Optional[str] = None,
+    models_dir: Optional[Path] = None,
+) -> str:
+    """Prefer a downloaded catalog model after uninstall; else product default."""
+    ex = (exclude or "").strip()
+    for mid in FALLBACK_MODEL_IDS:
+        if mid == ex:
+            continue
+        if is_model_downloaded(mid, models_dir):
+            return mid
+    for m in MODEL_CATALOG:
+        if m.id == ex:
+            continue
+        if is_model_downloaded(m.id, models_dir):
+            return m.id
+    return product_default_model_id()
 
 
 def model_combo_label(info: ModelInfo, *, status: Optional[str] = None) -> str:

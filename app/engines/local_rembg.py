@@ -29,11 +29,58 @@ class DownloadCancelled(Exception):
     """Model download aborted because the user switched models (or gen bumped)."""
 
 
+def _format_rembg_import_error(exc: BaseException) -> RuntimeError:
+    """Turn a failed rembg import into an actionable Chinese error."""
+    detail = f"{type(exc).__name__}: {exc}".strip()
+    # Root causes seen in frozen builds: incomplete numpy/cv2/pymatting packaging
+    lower = detail.lower()
+    if "numpy" in lower or "multiarray" in lower:
+        hint = "打包环境缺少完整 numpy（常见于 PyInstaller）。请重新用 peel.spec 完整打包。"
+    elif "pymatting" in lower:
+        hint = "缺少 pymatting 依赖，Alpha Matting 相关组件未打进安装包。"
+    elif "cv2" in lower or "opencv" in lower:
+        hint = "缺少 OpenCV (cv2) 组件，安装包不完整。"
+    elif "onnxruntime" in lower:
+        hint = "缺少 onnxruntime 推理库，安装包不完整。"
+    else:
+        hint = "rembg 引擎未能加载（安装包依赖不完整或与当前系统不兼容）。"
+    return RuntimeError(f"{hint}\n（详情：{detail}）")
+
+
+def _import_rembg_remove():
+    """Import rembg.remove with a clear error if the frozen package is incomplete."""
+    try:
+        # Prefer submodule path so a broken rembg.__init__ re-export is less opaque
+        from rembg.bg import remove as remove_fn
+
+        return remove_fn
+    except Exception as first:
+        try:
+            from rembg import remove as remove_fn
+
+            return remove_fn
+        except Exception:
+            raise _format_rembg_import_error(first) from first
+
+
+def _import_rembg_new_session():
+    try:
+        from rembg.session_factory import new_session
+
+        return new_session
+    except Exception as first:
+        try:
+            from rembg import new_session
+
+            return new_session
+        except Exception:
+            raise _format_rembg_import_error(first) from first
+
+
 def _project_models_dir() -> Path:
-    root = Path(__file__).resolve().parents[2]
-    path = root / "models"
-    path.mkdir(parents=True, exist_ok=True)
-    return path
+    from app.runtime_paths import models_dir
+
+    return models_dir()
 
 
 def model_part_path(model_id: str, models_dir: Optional[Path] = None) -> Path:
@@ -562,8 +609,7 @@ class LocalRembgEngine(BackgroundEngine):
         self._ensure_session()
 
     def _create_session(self, name: str, providers: list[str]):
-        from rembg import new_session
-
+        new_session = _import_rembg_new_session()
         return new_session(name, providers=list(providers))
 
     def _ensure_session(self):
@@ -696,13 +742,13 @@ class LocalRembgEngine(BackgroundEngine):
         *,
         source_path: Optional[Path] = None,
     ) -> EngineResult:
-        from rembg import remove
+        remove_fn = _import_rembg_remove()
 
         with self._infer_lock:
             session = self._ensure_session()
             image, path = self._load_image(source, source_path)
 
-            out = remove(
+            out = remove_fn(
                 image,
                 session=session,
                 post_process_mask=self.post_process_mask,

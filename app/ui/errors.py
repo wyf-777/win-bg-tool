@@ -15,6 +15,7 @@ def friendly_error(exc: BaseException | str) -> str:
         (r"cannot identify image|unidentified image|truncated file", "无法识别为图片，请换一张 jpg/png/webp。"),
         (r"memory|out of memory|oom", "内存不足。请关掉其它程序，或换一张更小的图。"),
         (r"onnxruntime|ort\.|cuda|cudnn", "本机推理组件异常。请使用普通模式重试（设置中可关闭「更快处理」）。"),
+        (r"cannot import name ['\"]remove['\"]|rembg|numpy\.core\.multiarray|pymatting|安装包依赖不完整|打包环境缺少", "去背景引擎加载失败。请使用完整打包的 Peel 目录（勿只复制 exe），或重新运行 scripts\\build_exe.bat。"),
         (r"download|urlopen|connection|timed out|network|http", "模型下载或网络失败。首次使用需联网下载模型到 models/ 目录。"),
         (r"无法加载 rembg 模型|new_session", "无法加载本机模型。请确认 models/ 可写，且首次已联网下载模型。"),
         (r"clipboard|剪贴板", "剪贴板里没有可用图片。"),

@@ -87,7 +87,8 @@ def export_image(
     if dest_path.is_dir() or str(dest).endswith(("/", "\\")):
         base = source_name or "image"
         stem = Path(base).stem
-        name = f"{prefix}{stem}{suffix}" if prefix else f"{stem}_nobg{suffix}"
+        # Empty prefix → keep original stem (no forced _nobg)
+        name = f"{prefix}{stem}{suffix}" if prefix else f"{stem}{suffix}"
         dest_path = dest_path / name
     else:
         dest_path = dest_path.with_suffix(suffix)

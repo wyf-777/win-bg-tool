@@ -1,6 +1,6 @@
 # 进度与里程碑
 
-最后更新：2026-08-01（F13 文件夹监视 v1 + 文档对齐）
+最后更新：2026-08-02（进程引擎 + 自愈 + 文档整理）
 
 ## 总览
 
@@ -13,10 +13,27 @@
 | M3 体验打磨 | 主题、错误、设置入口 | **已完成** |
 | M4 多图批处理 | 网格/灯箱/追加/导出选中全部 | **已完成** |
 | M5 设置增强 | 模型目录、格式、Edge 式设置页 | **已完成** |
-| M6 二期（可选） | 剪贴板、F13 监视、F14 加速已做；在线 / 打包仍可选 | **部分完成** |
+| M6 二期 | 剪贴板、F13 监视、F14 加速、F15 打包 | **已完成（在线除外）** |
+| M7 工程化 | 进程隔离推理、UI 不卡、引擎自愈 | **已完成** |
 
-**当前焦点：** 产品主路径已可用；无强制待办。  
-**全景：** [overview.md](overview.md) · **需求：** [requirements.md](requirements.md) · **加速设计：** [design-accel.md](design-accel.md)
+**当前焦点：** 主路径可用；可选做 exe 完整回归、样张评测、在线引擎。  
+**全景：** [overview.md](overview.md) · **需求：** [requirements.md](requirements.md)
+
+---
+
+## 文档索引
+
+| 文档 | 用途 |
+|------|------|
+| [overview.md](overview.md) | 产品总览与架构简图 |
+| [requirements.md](requirements.md) | 需求与验收 |
+| [packaging.md](packaging.md) | **打包 exe** 踩坑、清单、验收 |
+| [architecture-loading.md](architecture-loading.md) | **加载/不卡 UI/进程隔离/自愈** |
+| [design-accel.md](design-accel.md) | F14 更快处理 |
+| [design-folder-watch.md](design-folder-watch.md) | F13 文件夹监视 |
+| [design-multi-image.md](design-multi-image.md) | 多图交互 |
+| [research-rembg.md](research-rembg.md) | rembg 调研 |
+| [manual-mask-editor-plan.md](manual-mask-editor-plan.md) | 手动修补方案 |
 
 ---
 
@@ -26,71 +43,36 @@
 
 | ID | 内容 | 状态 |
 |----|------|------|
-| F01 | 打开图片（可多选） | 已做 |
-| F02 | 拖入图片 | 已做 |
-| F03 | 本机去背景（不上传） | 已做 |
-| F04 | 透明预览（棋盘格） | 已做 |
-| F05 | 导出（默认 PNG，可改格式） | 已做（多格式） |
-| F06 | 处理中忙碌态 | 已做 |
-| F07 | 友好错误提示 | 已做 |
+| F01–F07 | 打开/拖入/本机抠图/预览/导出/忙碌/友好错误 | **已做** |
 
-### 体验 / 设置（P1 及增强）
+### 体验 / 设置（P1）
 
 | ID / 项 | 内容 | 状态 |
 |---------|------|------|
-| F08 | 导出文件名前缀 | 已做 |
-| — | 默认导出格式 png/jpg/webp/bmp/tiff/自定义 | 已做 |
-| — | 主题浅色/深色/跟随系统 | 已做 |
-| — | Edge 式全窗设置 | 已做 |
-| — | 模型目录 + 擅长说明 + 切换重建 session | 已做 |
-| — | Alpha Matting 开关 | 已做 |
-| F14 | 更快处理（软加速） | **已做**（默认普通模式；检测 + 失败回退） |
-| — | 设置页 Esc /「返回」回主界面 | 已做 |
-| F09 | 原图/结果对照 | **已做** |
-| F10 | 复制到剪贴板 | **已做**（Ctrl+C） |
-| — | 从剪贴板粘贴导入 | **已做**（Ctrl+V） |
-| — | 快捷键可自定义 | **已做**（含 Esc / 灯箱方向 / 按住看原图） |
-| — | 手动修补 | **已做** |
-| — | 单图/多图右键用已下载模型重抠 | **已做** |
+| F08 | 导出前缀（可关） | 已做 |
+| — | 多格式导出、主题、Edge 设置 | 已做 |
+| — | 模型目录 + 确认下载 / 卸载 / 批处理中切模型不打断当前图 | 已做 |
+| F09 / F10 | 对照、剪贴板 | 已做 |
+| — | 快捷键可改绑、手动修补、右键重抠 | 已做 |
+| F14 | 更快处理（软加速） | 已做 |
 
-### 多图（F16–F25）
+### 多图 / 二期
 
 | ID | 内容 | 状态 |
 |----|------|------|
-| F16–F25 | 自动批处理、网格/灯箱、忙拒拖、追加、导出选中/全部、上限 48/24 | **已做** |
+| F16–F25 | 批处理、网格/灯箱、上限 | 已做 |
+| F13 | 文件夹监视 v1.2 | 已做 |
+| F15 | 打包 exe（默认 u2netp） | **已做**（见 packaging.md） |
+| F11/F12 | 在线 remove.bg | **未做**（无 Key，延后） |
 
-### 二期（P2 / M6）
+### 工程化（M7）
 
-| ID | 内容 | 状态 |
-|----|------|------|
-| F13 | 文件夹监视批处理 | **已做 v1.2**（递归/归档/重试/托盘） |
-| F14 | 更快处理 | **已做** |
-| F11/F12 | remove.bg 在线 + 切换 | 未做（无 Key，刻意延后） |
-| F15 | 打包 exe | 未做 |
-
-### 明确不做 / 已取消
-
-- 复刻 Glaze / 从 dmg 移植  
-- 空白区「不点开文件框」专项（用户取消）  
-- 第一版 Tauri/Electron/Qt C++  
-
----
-
-## 任务勾选（精简）
-
-### 已完成
-
-- [x] M0–M5 主线  
-- [x] F09 对照；F10 剪贴板；F13 监视 v1.2；F14 加速  
-- [x] 手动修补；右键重抠；快捷键全量可改绑  
-- [x] 文档：含 design-folder-watch / design-accel  
-
-### 未完成（可选）
-
-- [ ] F11/F12 在线 remove.bg  
-- [ ] F15 打包  
-- [ ] 真实样张系统性评测  
-- [ ] 清理仓库根 `_dbg_*.txt` 等调试残留  
+| 项 | 状态 |
+|----|------|
+| 无边框顶栏 + 系统拖动 | 已做 |
+| UI 秒开 + 引擎就绪态（排队） | 已做 |
+| `ProcessRembgEngine` 独立推理进程 | 已做 |
+| 引擎 supervisor 自愈 / 熔断 | 已做 |
 
 ---
 
@@ -98,29 +80,30 @@
 
 | 层 | 位置 | 说明 |
 |----|------|------|
-| 入口 | `app/main.py` / `run.bat` | `python -m app.main` |
-| 引擎 | `engines/local_rembg.py` + `models_catalog.py` + `runtime_accel.py` | rembg；模型；加速探测/providers |
-| 会话 | `session/batch_session.py` | 串行队列、重抠、上限 |
-| 服务 | `settings` / `export` / `clipboard` / `mask_edit` / `hotkeys` / `folder_watch` | 持久化与能力 |
-| UI | `main_window` / `workspace` / `settings_dialog` / `mask_editor` / `theme` | 主界面 + 设置 + 修补 |
+| 入口 | `app/main.py` | `python -m app.main`；`multiprocessing.freeze_support` |
+| UI 引擎门面 | `engines/process_engine.py` | 队列 IPC；**UI 不 import rembg** |
+| 推理 worker | `engines/process_worker.py` | 子进程内 `LocalRembgEngine` |
+| 本机实现 | `engines/local_rembg.py` | 仅 worker 使用 |
+| 模型/加速 | `models_catalog` / `runtime_accel` | 目录、下载态、providers |
+| 会话 | `session/batch_session.py` | 串行队列、重抠 |
+| 服务 | settings / export / clipboard / folder_watch / hotkeys | |
+| UI | main_window / workspace / settings_dialog / title_bar / theme | |
+| 打包 | `peel.spec` + `scripts/build_exe.bat` | 见 packaging.md |
 
-默认模型：`isnet-general-use`；模型缓存：`models/`（U2NET_HOME）。  
-加速：默认 CPU；可选偏好见 [design-accel.md](design-accel.md)。
-
-**模型选用策略：** 始终使用引擎当前模型（设置默认或右键重抠切换后的模型），**不按图片内容自动选模型**。
+- **开发默认模型：** `isnet-general-use`  
+- **打包默认模型：** `u2netp`（内置）  
+- **模型缓存：** `models/`（U2NET_HOME）  
+- **选用策略：** 不按图片自动换模型；设置默认 + 右键重抠  
 
 ---
 
-## 优化与注意点（非必须）
+## 后续可选
 
-| 优先级 | 项 | 说明 |
-|--------|----|------|
-| 中 | 网格 resize 全量重建 | 可防抖 |
-| 中 | 主窗部分私有 API 访问 workspace | 可继续公有化 |
-| 低 | 调试残留 | `_dbg_*.txt` 等 |
-| 体验 | 首次用某模型需下载 | 正常 |
-| 分发 | 未打包 | 需 F15 |
-| 进阶 | 真 GPU | 需自行安装匹配的 `onnxruntime-gpu`（与 CPU 包常二选一） |
+| 优先级 | 项 |
+|--------|-----|
+| 高 | 真实 `Peel.exe` 全路径回归（多进程 spawn） |
+| 中 | 样张评测；设置页懒加载；下载进度条 |
+| 低 | F11/F12 在线；worker 空闲 ping；C++ ORT |
 
 ---
 
@@ -129,13 +112,12 @@
 | 决策 | 说明 |
 |------|------|
 | Windows 独立产品，不移植 Mac dmg | — |
-| 本机 rembg；在线延后 | 无 Key 不硬做 |
-| 多图：自动处理、单张整框、忙拒拖、完成可追加、48/24 | design-multi-image.md |
-| 设置全窗；Esc = 返回上一级（含退出设置） | 与「返回」一致 |
-| 导出默认格式可配 | png/jpg/webp/bmp/tiff/自定义 |
-| F14 默认普通模式；加速为软偏好；失败回退 | design-accel.md；面向全体用户 |
-| F13 监视：默认「已抠图」、不入网格、只处理开启后新文件 | design-folder-watch.md |
-| 右键重抠不写设置默认模型 | 只改引擎当前模型 |
+| 本机 rembg；在线延后 | 无 Key |
+| 推理与 UI **分进程** | 避免 GIL 冻界面 |
+| 批处理中切模型：当前图做完，后续用新模型 | process_engine 约定 |
+| 引擎崩溃：有限次自愈 + 熔断 | architecture-loading.md |
+| 打包 onedir + collect_all 重型栈 | packaging.md |
+| F14 默认普通模式 | design-accel.md |
 
 ---
 
@@ -143,17 +125,17 @@
 
 | 日期 | 说明 |
 |------|------|
-| 2026-07-27 | 初始化至多图、设置、Edge 页等 |
-| 2026-07-27 | 全量进度审查 |
-| 2026-08-01 | F10 剪贴板文档对齐；修补与快捷键增强 |
-| 2026-08-01 | F14 加速实现 + [design-accel.md](design-accel.md)；进度/需求/README 对齐 |
-| 2026-08-01 | F13 文件夹监视 v1 + [design-folder-watch.md](design-folder-watch.md) |
-| 2026-08-01 | F13 v1.1：持久清单、失败目录、暂停/清空、主界面监视徽章 |
-| 2026-08-01 | F13 v1.2：含子目录、成功归档、重试失败、监视时托盘常驻 |
+| 2026-07-27 | 初始化至多图、设置等 |
+| 2026-08-01 | F10/F13/F14、修补与快捷键 |
+| 2026-08-02 | F15 打包；rembg 打包修复；packaging.md |
+| 2026-08-02 | 模型确认下载/卸载；设置性能 |
+| 2026-08-02 | 无边框顶栏；UI 不卡；ProcessRembgEngine |
+| 2026-08-02 | 批处理切模型不打断当前图；引擎自愈 |
+| 2026-08-02 | 文档整理（progress / overview / README / architecture） |
 
 ## 如何更新本文档
 
-1. 完成任务：勾选并改总览状态  
+1. 完成任务：改状态表与变更日志  
 2. 重要决策：写入决策记录  
 3. 改需求：先改 requirements.md  
-4. 阶段交付：更新「最后更新」与「当前焦点」  
+4. 打包相关：同步 packaging.md  

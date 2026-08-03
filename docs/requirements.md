@@ -81,7 +81,7 @@
 |----|------|------|
 | F11 | 在线引擎 remove.bg | 需用户自备 Key |
 | F12 | 本机/在线切换 | 依赖 F11 |
-| F15 | 安装包 / exe | PyInstaller 等 |
+| F15 | 安装包 / exe | **已支持**：`scripts/build_exe.bat`；打包默认自带 U²-Net 轻量（u2netp） |
 
 ### 3.6 不做（当前）
 

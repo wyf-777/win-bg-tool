@@ -12,6 +12,7 @@ Thumbs.db
 dist/
 build/
 *.spec
+!peel.spec
 *.egg-info/
 .pytest_cache/
 .mypy_cache/

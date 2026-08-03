@@ -5,7 +5,7 @@ from typing import List, Optional, Sequence, Tuple
 
 from PySide6.QtCore import QObject, QThread, Signal, Slot
 
-from app.engines.local_rembg import LocalRembgEngine
+from app.engines.base import BackgroundEngine
 from app.session.limits import MAX_DROP, MAX_FILE_BYTES, MAX_SESSION
 from app.session.models import ImageItem, ItemStatus
 from app.session.paths import IMAGE_EXTENSIONS, is_supported_image
@@ -16,7 +16,7 @@ class _ItemWorker(QThread):
     finished_ok = Signal(str, object, str)  # id, PIL image, model
     finished_err = Signal(str, str)  # id, message
 
-    def __init__(self, engine: LocalRembgEngine, item_id: str, path: Path, parent=None):
+    def __init__(self, engine: BackgroundEngine, item_id: str, path: Path, parent=None):
         super().__init__(parent)
         self.engine = engine
         self.item_id = item_id
@@ -41,7 +41,7 @@ class BatchSession(QObject):
 
     def __init__(
         self,
-        engine: LocalRembgEngine,
+        engine: BackgroundEngine,
         parent=None,
         *,
         export_prefix: str = "nobg_",
@@ -50,11 +50,12 @@ class BatchSession(QObject):
         self.engine = engine
         self.items: List[ImageItem] = []
         self._worker: Optional[_ItemWorker] = None
-        self._export_prefix = export_prefix or "nobg_"
+        # Empty string allowed = no prefix on temp / export names
+        self._export_prefix = (export_prefix or "").strip()
         self._last_model = ""
 
     def set_export_prefix(self, prefix: str) -> None:
-        self._export_prefix = (prefix or "nobg_").strip() or "nobg_"
+        self._export_prefix = (prefix or "").strip()
 
     # ── queries ────────────────────────────────────────────
 

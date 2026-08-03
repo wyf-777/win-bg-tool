@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from PySide6.QtCore import QSettings
 
-from app.engines.models_catalog import DEFAULT_MODEL_ID, is_known_model
+from app.engines.models_catalog import (
+    DEFAULT_MODEL_ID,
+    is_known_model,
+    product_default_model_id,
+)
 from app.services.export import (
     DEFAULT_EXPORT_FORMAT,
     KNOWN_FORMAT_IDS,
@@ -15,6 +19,7 @@ APP = "Peel"
 KEY_THEME = "ui/theme"
 KEY_MODEL = "engine/model"
 KEY_EXPORT_PREFIX = "export/prefix"
+KEY_EXPORT_PREFIX_ENABLED = "export/prefix_enabled"
 KEY_EXPORT_FORMAT = "export/format"
 KEY_EXPORT_CUSTOM_EXT = "export/custom_ext"
 KEY_ALPHA_MATTING = "engine/alpha_matting"
@@ -29,6 +34,7 @@ KEY_WATCH_TRAY = "watch/minimize_to_tray"
 
 DEFAULT_THEME = "system"
 DEFAULT_EXPORT_PREFIX = "nobg_"
+DEFAULT_EXPORT_PREFIX_ENABLED = True  # user can turn off prefix entirely
 DEFAULT_ALPHA_MATTING = False
 DEFAULT_CUSTOM_EXT = "png"
 DEFAULT_PREFER_ACCEL = False  # everyone starts on safe CPU path
@@ -60,34 +66,73 @@ def set_theme(theme: str) -> None:
 
 
 def get_model() -> str:
-    value = str(settings().value(KEY_MODEL, DEFAULT_MODEL_ID))
+    fallback = product_default_model_id()
+    # QSettings may still hold an older default; use product default when unset
+    raw = settings().value(KEY_MODEL, None)
+    if raw is None or str(raw).strip() == "":
+        return fallback
+    value = str(raw).strip()
     if not is_known_model(value):
-        return DEFAULT_MODEL_ID
+        return fallback
     return value
 
 
 def set_model(model_id: str) -> None:
     if not is_known_model(model_id):
-        model_id = DEFAULT_MODEL_ID
+        model_id = product_default_model_id()
     s = settings()
     s.setValue(KEY_MODEL, model_id)
     s.sync()
 
 
+def _as_bool(value, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes", "on"}:
+        return True
+    if text in {"0", "false", "no", "off"}:
+        return False
+    return default
+
+
 def get_export_prefix() -> str:
+    """Stored prefix text (may be empty). Does not apply the enable toggle."""
     value = settings().value(KEY_EXPORT_PREFIX, DEFAULT_EXPORT_PREFIX)
     text = str(value) if value is not None else DEFAULT_EXPORT_PREFIX
-    text = text.strip().replace("/", "_").replace("\\", "_")
-    return text if text else DEFAULT_EXPORT_PREFIX
+    return text.strip().replace("/", "_").replace("\\", "_")
 
 
 def set_export_prefix(prefix: str) -> None:
+    """Save prefix text as typed; empty is allowed (means no chars when enabled)."""
     text = (prefix or "").strip().replace("/", "_").replace("\\", "_")
-    if not text:
-        text = DEFAULT_EXPORT_PREFIX
     s = settings()
     s.setValue(KEY_EXPORT_PREFIX, text)
     s.sync()
+
+
+def get_export_prefix_enabled() -> bool:
+    return _as_bool(
+        settings().value(KEY_EXPORT_PREFIX_ENABLED, DEFAULT_EXPORT_PREFIX_ENABLED),
+        DEFAULT_EXPORT_PREFIX_ENABLED,
+    )
+
+
+def set_export_prefix_enabled(enabled: bool) -> None:
+    s = settings()
+    s.setValue(KEY_EXPORT_PREFIX_ENABLED, bool(enabled))
+    s.sync()
+
+
+def get_effective_export_prefix() -> str:
+    """Prefix actually used for export/watch naming (empty when toggle is off)."""
+    if not get_export_prefix_enabled():
+        return ""
+    return get_export_prefix()
 
 
 def get_export_format() -> str:
@@ -130,16 +175,6 @@ def set_alpha_matting(enabled: bool) -> None:
     s = settings()
     s.setValue(KEY_ALPHA_MATTING, bool(enabled))
     s.sync()
-
-
-def _as_bool(value, default: bool) -> bool:
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        return value.lower() in {"1", "true", "yes"}
-    if value is None:
-        return default
-    return bool(value)
 
 
 def get_prefer_accel() -> bool:

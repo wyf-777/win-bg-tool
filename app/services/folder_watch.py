@@ -4,7 +4,7 @@ F13 folder watch (hot folder) — v1.2
 - Output default: {watch}/已抠图 (not the watch root)
 - Does not add results to the main session grid
 - Ledger in app data (never under the export folder)
-- Serial processing via shared LocalRembgEngine
+- Serial processing via shared engine
 - After idle, new drops are discovered by poll + FS watcher + reconcile
 """
 
@@ -21,7 +21,7 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 from PySide6.QtCore import QObject, QThread, QTimer, Qt, Signal, Slot
 
-from app.engines.local_rembg import LocalRembgEngine
+from app.engines.base import BackgroundEngine
 from app.services.export import export_image
 from app.session.paths import IMAGE_EXTENSIONS, is_supported_image
 from app.ui.errors import friendly_error
@@ -119,7 +119,7 @@ class _WatchWorker(QThread):
 
     def __init__(
         self,
-        engine: LocalRembgEngine,
+        engine: BackgroundEngine,
         source: Path,
         export_dir: Path,
         fail_dir: Path,
@@ -193,7 +193,7 @@ class FolderWatchService(QObject):
 
     def __init__(
         self,
-        engine: LocalRembgEngine,
+        engine: BackgroundEngine,
         parent=None,
         *,
         get_export_fmt: Optional[Callable[[], Tuple[str, str, str]]] = None,

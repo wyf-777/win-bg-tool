@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import List, Optional
 
 from PySide6.QtCore import Qt, QThread, Signal, Slot, QObject, QEvent
-from PySide6.QtGui import QAction, QKeyEvent, QKeySequence, QShortcut
+from PySide6.QtGui import QAction, QCursor, QKeyEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
@@ -24,8 +25,8 @@ from PySide6.QtWidgets import (
     QStatusBar,
 )
 
-from app.engines.local_rembg import LocalRembgEngine
 from app.engines.models_catalog import get_model_info
+from app.engines.process_engine import ProcessRembgEngine
 from app.services.export import (
     export_image,
     file_filter_for_format,
@@ -42,7 +43,7 @@ from app.services.settings import (
     get_alpha_matting,
     get_export_custom_ext,
     get_export_format,
-    get_export_prefix,
+    get_effective_export_prefix,
     get_model,
     get_prefer_accel,
     get_theme,
@@ -61,6 +62,8 @@ from app.ui.errors import friendly_error
 from app.ui.mask_editor import MaskEditorDialog
 from app.ui.settings_dialog import SettingsPage
 from app.ui.theme import build_stylesheet, resolve_theme
+from app.ui.title_bar import WindowTitleBar
+from app.ui.win_chrome import edges_at, start_system_resize
 from app.ui.widgets import (
     SlideClearButton,
     SlideExportButton,
@@ -74,35 +77,67 @@ from app.ui.workspace import Workspace
 class MainWindow(QMainWindow):
     # Cross-thread download progress (worker → UI)
     engine_progress = Signal(str)
+    # boot → libs → model → ready | error
+    engine_state_changed = Signal(str)
+    # Engine supervisor: restarting | recovered | gave_up | info
+    engine_health = Signal(str, str)
 
     def __init__(self) -> None:
         super().__init__()
-        self.setWindowTitle("Peel — 去背景")
+        # Taskbar / alt-tab name only — no OS title strip (frameless chrome below)
+        self.setWindowTitle("Peel")
+        self.setWindowFlags(
+            Qt.WindowType.Window | Qt.WindowType.FramelessWindowHint
+        )
         self.resize(720, 720)
         # Min size leaves room for top chrome + footer actions + status
         self.setMinimumSize(480, 480)
 
         self._theme_pref = get_theme()
-        self._export_prefix = get_export_prefix()
-        self.engine = LocalRembgEngine(
+        self._export_prefix = get_effective_export_prefix()
+        self._last_progress_mono = 0.0
+        # Engine readiness (mature pattern: UI shell first, engine later)
+        self._engine_phase = "boot"  # boot|libs|model|ready|error
+        self._pending_paths: List[str] = []
+
+        # Separate process for rembg/onnx — UI process never imports them (no GIL freeze)
+        self.engine = ProcessRembgEngine(
             model_name=get_model(),
             alpha_matting=get_alpha_matting(),
             prefer_accel=get_prefer_accel(),
         )
         self.engine_progress.connect(self._show_engine_progress)
+        self.engine_health.connect(self._on_engine_health)
         # Download progress → status bar (may fire from worker threads)
         self.engine.set_progress_callback(
             lambda m: self.engine_progress.emit(m)
+        )
+        # Supervisor events may fire from engine worker threads
+        self.engine.set_health_callback(
+            lambda ev, msg: self.engine_health.emit(ev, msg)
         )
         self.session = BatchSession(
             self.engine, self, export_prefix=self._export_prefix
         )
 
         central = QWidget()
+        central.setObjectName("MainCentral")
         self.setCentralWidget(central)
         outer = QVBoxLayout(central)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
+
+        # Custom title bar (min / max / close) — seamless with window_bg
+        self.title_bar = WindowTitleBar(self)
+        self.title_bar.minimize_requested.connect(self.showMinimized)
+        self.title_bar.maximize_requested.connect(self._toggle_maximize)
+        self.title_bar.close_requested.connect(self.close)
+        outer.addWidget(self.title_bar, 0)
+
+        # Edge resize: only on press near frame (no mouse-move filter — that
+        # was fighting UI responsiveness on every move/hover).
+        self.installEventFilter(self)
+        central.installEventFilter(self)
 
         # Full-window stack: main app | Edge-style settings
         self.root_stack = QStackedWidget()
@@ -117,8 +152,11 @@ class MainWindow(QMainWindow):
         top = QHBoxLayout()
         brand = QLabel("🥝  Peel")
         brand.setObjectName("BrandLabel")
-        self.model_label = QLabel("本机 · 就绪")
+        self.model_label = QLabel("本机 · 引擎准备中…")
         self.model_label.setObjectName("ModelLabel")
+        self.model_label.setToolTip(
+            "设置与界面可随时使用；抠图需等推理引擎就绪。"
+        )
         self.model_label.setAlignment(
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
         )
@@ -257,6 +295,7 @@ class MainWindow(QMainWindow):
         self.settings_page.watch_config_changed.connect(self._apply_folder_watch)
         self.settings_page.watch_pause_toggled.connect(self._on_watch_pause_toggled)
         self.settings_page.watch_clear_queue.connect(self._on_watch_clear_queue)
+        self.settings_page.watch_open_input.connect(self._on_watch_open_input)
         self.settings_page.watch_open_output.connect(self._on_watch_open_output)
         self.settings_page.watch_open_fail.connect(self._on_watch_open_fail)
         self.settings_page.watch_retry_failed.connect(self._on_watch_retry_failed)
@@ -277,12 +316,13 @@ class MainWindow(QMainWindow):
         self.folder_watch.stats_changed.connect(self._on_watch_stats)
         self.folder_watch.enabled_changed.connect(self._refresh_watch_badge)
         self.folder_watch.enabled_changed.connect(self._sync_tray_visibility)
+        self.folder_watch.enabled_changed.connect(self._on_watch_enabled_changed)
         self.folder_watch.paused_changed.connect(self._on_watch_paused_changed)
 
         self._setup_system_tray()
 
         self.setStatusBar(QStatusBar())
-        self.statusBar().showMessage("准备就绪")
+        self.statusBar().showMessage("界面已就绪 · 推理引擎后台准备中…")
 
         self.session.items_changed.connect(self._on_items_changed)
         self.session.item_updated.connect(self._on_item_updated)
@@ -290,12 +330,14 @@ class MainWindow(QMainWindow):
         self.session.status_message.connect(self.statusBar().showMessage)
         self.session.model_name_changed.connect(self._on_model_name)
 
-        # Restore watch if user left it enabled
         from PySide6.QtCore import QTimer
 
-        QTimer.singleShot(600, self._apply_folder_watch)
+        # Folder watch after first paint; engine boot is independent readiness FSM
+        QTimer.singleShot(800, self._apply_folder_watch)
+        QTimer.singleShot(0, self._boot_engine)
 
         self._apply_theme()
+        self.title_bar.set_maximized_state(self.isMaximized())
 
         app = QApplication.instance()
         if app is not None:
@@ -312,6 +354,7 @@ class MainWindow(QMainWindow):
             "escape": self._on_escape,
             "lightbox_prev": lambda: self._lightbox_nav(-1),
             "lightbox_next": lambda: self._lightbox_nav(1),
+            "side_by_side": self._toggle_side_by_side,
             # peek_original: hold behavior — see keyPressEvent / keyReleaseEvent
         }
         self.reload_hotkeys()
@@ -322,10 +365,13 @@ class MainWindow(QMainWindow):
         if app is not None:
             app.installEventFilter(self._copy_filter)
 
-        self._start_model_warmup()
         self._refresh_chrome()
-        # show configured model id until warmup finishes
-        self.model_label.setText(f"本机 · {get_model()}")
+        self._set_engine_phase("boot", "界面已就绪 · 推理引擎后台准备中…")
+
+    def _toggle_side_by_side(self) -> None:
+        if self.is_settings_open() or self.is_repair_open():
+            return
+        self.workspace.toggle_side_by_side()
 
     def reload_hotkeys(self) -> None:
         """Load rebindable shortcuts from settings (including Esc / 灯箱方向键)."""
@@ -346,6 +392,10 @@ class MainWindow(QMainWindow):
                 self._hotkey_shortcuts[aid] = sc
             sc.setKey(QKeySequence(seq) if seq else QKeySequence())
             sc.setEnabled(bool(seq))
+        # Keep app-wide copy filter in sync without reading settings every key
+        cf = getattr(self, "_copy_filter", None)
+        if cf is not None and hasattr(cf, "refresh_cache"):
+            cf.refresh_cache()
 
     # ── Theme ──────────────────────────────────────────────
 
@@ -468,6 +518,9 @@ class MainWindow(QMainWindow):
     @Slot(str, str)
     def _on_reprocess_requested(self, item_id: str, model_id: str) -> None:
         """Multi-grid right-click: re-run one image with a downloaded model."""
+        if not self.is_engine_ready():
+            self.statusBar().showMessage("引擎准备中，请稍后再换模型重抠…", 4000)
+            return
         ok, msg = self.session.reprocess_item(item_id, model_id)
         if ok:
             # Reflect engine model in chrome (settings default unchanged)
@@ -478,33 +531,35 @@ class MainWindow(QMainWindow):
 
     @Slot(str)
     def _on_model_setting_changed(self, model_id: str) -> None:
-        # Allowed while busy/downloading: set_model bumps gen → cancels download
-        was_loading = self.engine.is_loading() or not self.engine.is_model_file_present(
-            self.engine.model_name
-        )
+        # set_model is local/non-blocking; heavy load runs on WarmupThread only.
+        was_loading = self.engine.is_loading()
         self.engine.set_model(model_id)
         info = get_model_info(model_id)
         label = info.label if info else model_id
-        self.model_label.setText(f"本机 · {model_id}")
+        self.model_label.setText(f"本机 · 加载 {label}…")
         if self.engine.is_model_file_present(model_id):
-            tip = f"已切换模型：{label}（本地已有"
+            tip = f"已切换模型：{label}（当前图用原模型完成，后续图用新模型）"
             if was_loading:
-                tip += "，已取消先前下载"
-            tip += "，后台加载中）"
+                tip = f"已切换模型：{label}（已取消未完成的预热，后台载入新模型…）"
             self.statusBar().showMessage(tip)
         else:
             self.statusBar().showMessage(
-                f"已切换模型：{label} — 首次使用，正在后台下载…"
-                f"可随时再换回本地模型以取消下载"
+                f"已确认下载并应用：{label} — 后台下载中…"
+                f"可再应用其它已下载模型以取消"
             )
-        # Warm new model (or continue queue with new model)
+        self._set_engine_phase("model")
         self._start_model_warmup()
+
 
     @Slot(str)
     def _on_prefix_changed(self, prefix: str) -> None:
-        self._export_prefix = prefix
-        self.session.set_export_prefix(prefix)
-        self.statusBar().showMessage(f"导出前缀：{prefix}")
+        # prefix is already the effective value (empty when toggle off)
+        self._export_prefix = prefix or ""
+        self.session.set_export_prefix(self._export_prefix)
+        if self._export_prefix:
+            self.statusBar().showMessage(f"导出前缀：{self._export_prefix}")
+        else:
+            self.statusBar().showMessage("导出前缀：已关闭（使用原文件名）")
 
     @Slot(str)
     def _on_format_changed(self, fmt_id: str) -> None:
@@ -516,57 +571,77 @@ class MainWindow(QMainWindow):
     @Slot(bool)
     def _on_alpha_changed(self, enabled: bool) -> None:
         self.engine.set_alpha_matting(enabled)
-        self.statusBar().showMessage(
-            "Alpha Matting 已开启（更慢、边缘更细）"
-            if enabled
-            else "Alpha Matting 已关闭"
-        )
 
     @Slot(bool)
     def _on_prefer_accel_changed(self, enabled: bool) -> None:
         """F14: soft accel preference — never blocks CPU-only machines."""
-        from app.engines.runtime_accel import detect_accel
-
         self.engine.set_prefer_accel(enabled)
-        status = detect_accel()
-        if enabled:
-            if status.available:
-                tip = f"已开启更快处理（{status.summary}）。下次加载模型时生效。"
-            else:
-                tip = (
-                    "已开启更快处理，但当前电脑未检测到加速组件，"
-                    "将继续使用普通模式。"
-                )
-        else:
-            tip = "已关闭更快处理，使用普通模式。"
-        self.statusBar().showMessage(tip)
+        # Status is shown only under the checkbox in settings (not status bar)
         # Reload session with new providers when idle
         if not self.session.is_busy():
             self._start_model_warmup()
 
     @Slot(str)
     def _show_engine_progress(self, msg: str) -> None:
-        if msg:
-            self.statusBar().showMessage(msg)
+        # Throttle: download progress can fire many times/sec from a worker and
+        # each statusBar update forces layout — freezes drag and button clicks.
+        if not msg:
+            return
+        now = time.monotonic()
+        if now - self._last_progress_mono < 0.2:
+            return
+        self._last_progress_mono = now
+        self.statusBar().showMessage(msg)
+
+    # ── Engine readiness FSM ───────────────────────────────
+
+    def is_engine_ready(self) -> bool:
+        return self._engine_phase == "ready"
+
+    def _set_engine_phase(self, phase: str, status: str | None = None) -> None:
+        self._engine_phase = phase
+        self.engine_state_changed.emit(phase)
+        mid = get_model()
+        if phase in ("boot", "libs"):
+            self.model_label.setText("本机 · 引擎准备中…")
+        elif phase == "model":
+            self.model_label.setText(f"本机 · 加载 {mid}…")
+        elif phase == "ready":
+            device = getattr(self.engine, "device_label", None) or "普通模式"
+            name = self.engine.model_name or mid
+            if not self.session.is_busy() and self.session.count() == 0:
+                self.model_label.setText(f"本机 · {name} · {device}")
+        elif phase == "error":
+            self.model_label.setText("本机 · 引擎未就绪")
+        if status:
+            self.statusBar().showMessage(status)
+
+    def _boot_engine(self) -> None:
+        """
+        Start inference *subprocess* and warm the model there.
+        rembg/onnx load in the worker process only — UI process stays free of GIL stalls.
+        """
+        self._set_engine_phase("libs", "正在启动推理进程…")
+        self._set_engine_phase("model", "正在加载模型…")
+        self._run_model_warmup()
 
     def _start_model_warmup(self) -> None:
-        # Defer slightly so first UI paint / hover isn't fighting ONNX load.
-        # Model switch still eventually warms; gen counter discards stale threads.
+        # After model switch: return immediately; load only on a worker thread.
         from PySide6.QtCore import QTimer
 
-        QTimer.singleShot(400, self._run_model_warmup)
+        self._set_engine_phase("model", "正在切换/加载模型…")
+        QTimer.singleShot(0, self._run_model_warmup)
 
     def _run_model_warmup(self) -> None:
-        # Avoid stacking warmups: one thread + engine lock = single download.
-        # If a previous warmup is still running, set_model already bumped gen;
-        # that thread will re-ensure the new model after it finishes.
+        # If a warmup is already running, set_model already bumped config_gen /
+        # cancelled the worker load; that thread will retry or fail then we restart.
         t = getattr(self, "_warmup_thread", None)
         if t is not None and t.isRunning():
-            if not self.engine.is_model_file_present():
-                self.statusBar().showMessage(
-                    f"模型「{self.engine.model_name}」下载/加载中…"
-                    f"请勿退出，完成后可用"
-                )
+            # Don't block UI — the running thread will see cancel and re-load,
+            # or we start a new thread after a short delay.
+            from PySide6.QtCore import QTimer
+
+            QTimer.singleShot(200, self._run_model_warmup_if_idle)
             return
         if not self.engine.is_model_file_present():
             self.statusBar().showMessage(
@@ -575,7 +650,25 @@ class MainWindow(QMainWindow):
         self._warmup_thread = _WarmupThread(self.engine)
         self._warmup_thread.done.connect(self._on_warmup)
         self._warmup_thread.failed.connect(self._on_warmup_failed)
+        self._warmup_thread.setPriority(QThread.Priority.LowPriority)
         self._warmup_thread.start()
+
+    def _run_model_warmup_if_idle(self) -> None:
+        t = getattr(self, "_warmup_thread", None)
+        if t is not None and t.isRunning():
+            from PySide6.QtCore import QTimer
+
+            QTimer.singleShot(200, self._run_model_warmup_if_idle)
+            return
+        self._run_model_warmup()
+
+    def _flush_pending_paths(self) -> None:
+        if not self._pending_paths:
+            return
+        paths = list(self._pending_paths)
+        self._pending_paths.clear()
+        self.statusBar().showMessage(f"引擎已就绪，开始处理 {len(paths)} 个文件…")
+        self._add_paths_now(paths)
 
     # ── Session chrome ─────────────────────────────────────
 
@@ -684,7 +777,7 @@ class MainWindow(QMainWindow):
         return (
             get_export_format(),
             get_export_custom_ext(),
-            get_export_prefix(),
+            get_effective_export_prefix(),
         )
 
     @Slot()
@@ -702,6 +795,8 @@ class MainWindow(QMainWindow):
                 self.folder_watch.stop()
             if hasattr(self.settings_page, "set_watch_runtime_status"):
                 self.settings_page.set_watch_runtime_status("监视已关闭")
+            if hasattr(self.settings_page, "set_watch_apply_state"):
+                self.settings_page.set_watch_apply_state(False)
             self._refresh_watch_badge()
             self._sync_tray_visibility()
             return
@@ -725,12 +820,16 @@ class MainWindow(QMainWindow):
             set_watch_enabled(False)
             if hasattr(self.settings_page, "set_watch_runtime_status"):
                 self.settings_page.set_watch_runtime_status(msg)
+            if hasattr(self.settings_page, "set_watch_apply_state"):
+                self.settings_page.set_watch_apply_state(False)
             if hasattr(self.settings_page, "_sync_watch_fields"):
                 self.settings_page._sync_watch_fields()
             self.statusBar().showMessage(msg, 8000)
             return
         if hasattr(self.settings_page, "set_watch_runtime_status"):
             self.settings_page.set_watch_runtime_status(self.folder_watch.status_text())
+        if hasattr(self.settings_page, "set_watch_apply_state"):
+            self.settings_page.set_watch_apply_state(True)
         self.statusBar().showMessage(self.folder_watch.status_text(), 6000)
         self._refresh_watch_badge()
         self._sync_tray_visibility()
@@ -810,6 +909,11 @@ class MainWindow(QMainWindow):
         self._refresh_watch_badge()
 
     @Slot(bool)
+    def _on_watch_enabled_changed(self, enabled: bool) -> None:
+        if hasattr(self.settings_page, "set_watch_apply_state"):
+            self.settings_page.set_watch_apply_state(bool(enabled))
+
+    @Slot(bool)
     def _on_watch_paused_changed(self, paused: bool) -> None:
         if hasattr(self.settings_page, "set_watch_pause_label"):
             self.settings_page.set_watch_pause_label(paused)
@@ -850,6 +954,33 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(f"已重新排队失败 {n} 项", 5000)
         else:
             self.statusBar().showMessage("没有可重试的失败项（或源文件已不在）", 5000)
+
+    @Slot()
+    def _on_watch_open_input(self) -> None:
+        """Open the watch/import folder (images go here)."""
+        from pathlib import Path
+
+        w = get_watch_dir().strip()
+        # Prefer live service path if running
+        if self.folder_watch.is_enabled and self.folder_watch._watch_dir is not None:
+            path = self.folder_watch._watch_dir
+        elif w:
+            path = Path(w)
+        else:
+            # fall back to settings page text if not saved yet
+            text = ""
+            if hasattr(self.settings_page, "edit_watch_dir"):
+                text = self.settings_page.edit_watch_dir.text().strip()
+            if not text:
+                self.statusBar().showMessage("尚未设置监视/导入文件夹", 4000)
+                return
+            path = Path(text)
+        try:
+            path.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            self.statusBar().showMessage(f"无法创建文件夹：{exc}", 5000)
+            return
+        self._reveal_in_explorer(path)
 
     @Slot()
     def _on_watch_open_output(self) -> None:
@@ -909,6 +1040,8 @@ class MainWindow(QMainWindow):
 
     @Slot(str)
     def _on_model_name(self, name: str) -> None:
+        if not self.is_engine_ready():
+            return
         device = getattr(self.engine, "device_label", None) or "普通模式"
         self.model_label.setText(f"本机 · {name} · {device}")
 
@@ -941,9 +1074,29 @@ class MainWindow(QMainWindow):
                 "当前批次仍在处理，请等待全部完成后再添加图片。",
             )
             return
+        # Engine not ready: queue paths (UI stays usable — settings etc. OK)
+        if not self.is_engine_ready():
+            for p in paths:
+                s = str(p)
+                if s and s not in self._pending_paths:
+                    self._pending_paths.append(s)
+            n = len(self._pending_paths)
+            self.statusBar().showMessage(
+                f"引擎准备中，已排队 {n} 个文件，就绪后自动处理…"
+            )
+            if self._engine_phase == "error":
+                # User intent: clear circuit and try again
+                if hasattr(self.engine, "reset_circuit"):
+                    self.engine.reset_circuit()
+                from PySide6.QtCore import QTimer
+
+                QTimer.singleShot(0, self._boot_engine)
+            return
+        self._add_paths_now(paths)
+
+    def _add_paths_now(self, paths: list) -> None:
         added, msg = self.session.add_paths(paths)
         if added == 0 and msg:
-            # only show modal if nothing added and looks like a hard reject
             if "仍在处理" in msg or "上限" in msg:
                 QMessageBox.information(self, "无法添加", msg)
 
@@ -951,6 +1104,9 @@ class MainWindow(QMainWindow):
     def paste_from_clipboard(self) -> None:
         if self.session.is_busy():
             self.statusBar().showMessage("正在处理，请稍候…")
+            return
+        if not self.is_engine_ready():
+            self.statusBar().showMessage("引擎准备中，请稍后再粘贴…", 3000)
             return
         clip = QApplication.clipboard()
         if clip is None:
@@ -1195,12 +1351,17 @@ class MainWindow(QMainWindow):
             return
         fmt_id = get_export_format()
         custom_ext = get_export_custom_ext()
+        # Always read live toggle (settings may change without restart)
+        prefix = get_effective_export_prefix()
+        self._export_prefix = prefix
+        self.session.set_export_prefix(prefix)
         _pfmt, suffix, _alpha = resolve_export_format(fmt_id, custom_ext)
         filt = file_filter_for_format(fmt_id, custom_ext)
 
         if single_dialog and len(items) == 1:
             item = items[0]
-            suggested = f"{self._export_prefix}{item.source_path.stem}{suffix}"
+            stem = item.source_path.stem
+            suggested = f"{prefix}{stem}{suffix}" if prefix else f"{stem}{suffix}"
             path, _ = QFileDialog.getSaveFileName(
                 self, "导出图片", suggested, filt
             )
@@ -1231,7 +1392,7 @@ class MainWindow(QMainWindow):
                     Path(folder),
                     fmt_id=fmt_id,
                     custom_ext=custom_ext,
-                    prefix=self._export_prefix,
+                    prefix=prefix,
                     source_name=item.source_path.name,
                 )
                 ok += 1
@@ -1346,25 +1507,99 @@ class MainWindow(QMainWindow):
 
     @Slot(str)
     def _on_warmup(self, model: str) -> None:
-        device = getattr(self.engine, "device_label", None) or "普通模式"
-        if not self.session.is_busy() and self.session.count() == 0:
-            self.model_label.setText(f"本机 · {model} · {device}")
-        # Refresh 已下载 marks if settings page is open
-        if hasattr(self.settings_page, "_refresh_model_combo_labels"):
-            self.settings_page._refresh_model_combo_labels()
-            self.settings_page._refresh_model_help()
-        if hasattr(self.settings_page, "_refresh_accel_ui"):
-            self.settings_page._refresh_accel_ui()
+        self._set_engine_phase(
+            "ready",
+            f"引擎就绪 · {model}",
+        )
+        # Only refresh settings UI when visible
+        if self.is_settings_open():
+            if hasattr(self.settings_page, "_invalidate_model_disk_cache"):
+                self.settings_page._invalidate_model_disk_cache()
+            if hasattr(self.settings_page, "_refresh_model_combo_labels"):
+                self.settings_page._refresh_model_combo_labels(force_disk=True)
+                self.settings_page._refresh_model_help(force_disk=False)
+        self._flush_pending_paths()
 
     @Slot(str)
     def _on_warmup_failed(self, message: str) -> None:
-        if not self.session.is_busy() and self.session.count() == 0:
-            self.model_label.setText(f"本机 · {get_model()}")
-        # Keep message visible longer — download failures are common
-        self.statusBar().showMessage(
-            f"模型未就绪: {message[:120]}（导入图片时会再试）",
-            12000,
+        # Cancelled mid-switch is normal — another warmup should follow
+        if "已取消" in message or "配置已变更" in message:
+            from PySide6.QtCore import QTimer
+
+            QTimer.singleShot(50, self._run_model_warmup_if_idle)
+            return
+        # Process death / heal failed
+        if any(k in message for k in ("退出", "崩溃", "熔断", "恢复")):
+            self._set_engine_phase(
+                "error",
+                f"{message[:140]}（拖入图片或重新应用模型可再试）",
+            )
+            return
+        self._set_engine_phase(
+            "error",
+            f"模型未就绪: {message[:120]}（拖入图片会再试）",
         )
+
+    @Slot(str, str)
+    def _on_engine_health(self, event: str, message: str) -> None:
+        """
+        Supervisor callbacks (Chrome-like): restarting / recovered / gave_up.
+        Always marshalled to UI thread via Signal.
+        """
+        if event == "restarting":
+            self._set_engine_phase("libs", message)
+        elif event == "recovered":
+            # Cold worker — must warm model again
+            self.statusBar().showMessage(message, 6000)
+            self._set_engine_phase("model", "推理进程已恢复，正在重新加载模型…")
+            from PySide6.QtCore import QTimer
+
+            QTimer.singleShot(0, self._run_model_warmup_if_idle)
+        elif event == "gave_up":
+            self._set_engine_phase("error", message)
+        elif message:
+            self.statusBar().showMessage(message, 5000)
+
+    # ── Frameless window chrome ────────────────────────────
+
+    def _toggle_maximize(self) -> None:
+        if self.isMaximized():
+            self.showNormal()
+        else:
+            self.showMaximized()
+        self.title_bar.set_maximized_state(self.isMaximized())
+
+    def changeEvent(self, event: QEvent) -> None:  # noqa: N802
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.WindowStateChange and hasattr(
+            self, "title_bar"
+        ):
+            self.title_bar.set_maximized_state(self.isMaximized())
+
+    def eventFilter(self, obj, event):  # noqa: N802
+        """Edge resize on press only (no per-move work)."""
+        if event.type() != QEvent.Type.MouseButtonPress:
+            return super().eventFilter(obj, event)
+        if getattr(event, "button", lambda: None)() != Qt.MouseButton.LeftButton:
+            return super().eventFilter(obj, event)
+        if self.isMaximized():
+            return super().eventFilter(obj, event)
+
+        local = self.mapFromGlobal(QCursor.pos())
+        r = self.rect()
+        m = 8
+        if not (
+            local.x() <= m
+            or local.y() <= m
+            or local.x() >= r.width() - m
+            or local.y() >= r.height() - m
+        ):
+            return super().eventFilter(obj, event)
+
+        edges = edges_at(self, local, margin=m)
+        if edges and start_system_resize(self, edges):
+            return True
+        return super().eventFilter(obj, event)
 
     def closeEvent(self, event) -> None:  # noqa: N802
         # Watch + tray: hide to tray instead of quit (unless tray quit / force)
@@ -1390,17 +1625,32 @@ class MainWindow(QMainWindow):
             self.folder_watch.stop()
         if self.tray is not None:
             self.tray.hide()
+        # Keep exit snappy: do not wait multi-seconds on workers.
+        # Killing the engine process aborts in-flight inference immediately.
+        eng = getattr(self, "engine", None)
+        if eng is not None and hasattr(eng, "shutdown_async"):
+            try:
+                eng.shutdown_async()
+            except Exception:
+                pass
+        elif eng is not None and hasattr(eng, "shutdown"):
+            try:
+                eng.shutdown()
+            except Exception:
+                pass
         if self.session.is_busy():
-            self.statusBar().showMessage("等待处理结束…")
-            self.session.wait_worker(8000)
+            self.session.wait_worker(400)
         if getattr(self, "folder_watch", None) is not None and self.folder_watch.is_busy():
             w = self.folder_watch._worker
             if w is not None and w.isRunning():
-                w.wait(8000)
+                w.wait(300)
         wt = getattr(self, "_warmup_thread", None)
         if wt is not None and wt.isRunning():
-            wt.wait(1500)
-        self.session.clear(force=True)
+            wt.wait(200)
+        try:
+            self.session.clear(force=True)
+        except Exception:
+            pass
         super().closeEvent(event)
 
 
@@ -1410,6 +1660,10 @@ class _CopyHotkeyFilter(QObject):
     def __init__(self, main: MainWindow) -> None:
         super().__init__(main)
         self._main = main
+        self._copy_seq_cache = get_hotkey("copy")
+
+    def refresh_cache(self) -> None:
+        self._copy_seq_cache = get_hotkey("copy")
 
     def eventFilter(self, obj, event) -> bool:  # noqa: N802
         if event.type() != QEvent.Type.KeyPress:
@@ -1418,7 +1672,8 @@ class _CopyHotkeyFilter(QObject):
             return False
         if event.isAutoRepeat():
             return False
-        if not sequence_matches_event(get_hotkey("copy"), event):
+        # Cached sequence — avoid QSettings read on every keypress
+        if not sequence_matches_event(self._copy_seq_cache, event):
             return False
         # Don't steal while settings are open (text fields / key capture)
         if self._main.is_settings_open():
@@ -1431,7 +1686,7 @@ class _WarmupThread(QThread):
     done = Signal(str)
     failed = Signal(str)
 
-    def __init__(self, engine: LocalRembgEngine) -> None:
+    def __init__(self, engine: ProcessRembgEngine) -> None:
         super().__init__()
         self.engine = engine
 

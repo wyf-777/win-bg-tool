@@ -154,6 +154,58 @@ def build_stylesheet(c: ThemeColors) -> str:
         background: transparent;
         border: none;
     }}
+    /* Frameless title strip — same fill as window (no OS caption seam) */
+    #WindowTitleBar {{
+        background: {c.window_bg};
+        border: none;
+    }}
+    #TitleBarBrand {{
+        font-size: 12px;
+        font-weight: 600;
+        color: {c.muted};
+        padding-left: 4px;
+    }}
+    #TitleBarDragPad {{
+        background: transparent;
+    }}
+    #MainCentral {{
+        background: {c.window_bg};
+    }}
+    QPushButton#WinChromeBtn {{
+        min-width: 36px;
+        max-width: 36px;
+        min-height: 28px;
+        max-height: 28px;
+        padding: 0;
+        border-radius: 14px;
+        background: {c.button_bg};
+        border: 1px solid {c.button_border};
+        color: {c.text};
+        font-size: 14px;
+        font-weight: 600;
+    }}
+    QPushButton#WinChromeBtn:hover {{
+        background: {c.button_hover};
+        border-color: {c.primary};
+    }}
+    QPushButton#WinCloseBtn {{
+        min-width: 36px;
+        max-width: 36px;
+        min-height: 28px;
+        max-height: 28px;
+        padding: 0;
+        border-radius: 14px;
+        background: {c.button_bg};
+        border: 1px solid {c.button_border};
+        color: {c.text};
+        font-size: 16px;
+        font-weight: 600;
+    }}
+    QPushButton#WinCloseBtn:hover {{
+        background: {c.error_text};
+        border-color: {c.error_text};
+        color: #ffffff;
+    }}
     #BrandLabel {{
         font-size: 18px;
         font-weight: 600;
@@ -345,6 +397,23 @@ def build_stylesheet(c: ThemeColors) -> str:
         border-color: {c.primary};
         background: {c.card_drag_bg};
         color: {c.text};
+    }}
+    /* Fixed mouse-gesture badge (same size as key capture, not clickable) */
+    QLabel#HotkeyGestureBadge {{
+        min-width: 120px;
+        padding: 6px 10px;
+        border-radius: 8px;
+        background: {c.card_bg};
+        border: 1px solid {c.card_border};
+        color: {c.muted};
+        font-size: 12px;
+        font-weight: 600;
+    }}
+    QFrame#HotkeySeparator {{
+        background: {c.card_border};
+        border: none;
+        max-height: 1px;
+        margin: 4px 0;
     }}
     #HotkeyActionTitle {{
         font-size: 14px;

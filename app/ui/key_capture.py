@@ -17,6 +17,7 @@ class KeyCaptureButton(QPushButton):
 
     captured = Signal(str)  # portable sequence
     capture_cancelled = Signal()
+    capture_started = Signal()  # emitted when this button enters capture mode
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -41,6 +42,9 @@ class KeyCaptureButton(QPushButton):
         return self._recording
 
     def start_capture(self) -> None:
+        if self._recording:
+            return
+        self.capture_started.emit()
         self._recording = True
         self.setText("请按键…")
         self.setProperty("recording", True)

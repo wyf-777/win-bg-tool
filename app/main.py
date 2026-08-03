@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import multiprocessing
 import sys
 from pathlib import Path
 
@@ -12,19 +13,25 @@ def _ensure_path() -> None:
 
 def main() -> int:
     _ensure_path()
-    from PySide6.QtWidgets import QApplication
+
     from PySide6.QtCore import Qt
+    from PySide6.QtWidgets import QApplication
+
     from app.engines.local_rembg import cleanup_interrupted_downloads
+    from app.runtime_paths import ensure_bundled_models
     from app.ui.main_window import MainWindow
 
-    # Drop leftover pooch tmp* from last interrupted model download
-    # (prevents clutter; next download starts clean once)
+    # Lightweight UI-process startup only (no rembg import here)
+    try:
+        ensure_bundled_models()
+    except Exception:
+        pass
+
     try:
         cleanup_interrupted_downloads()
     except Exception:
         pass
 
-    # High-DPI
     QApplication.setHighDpiScaleFactorRoundingPolicy(
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
     )
@@ -32,10 +39,13 @@ def main() -> int:
     app.setApplicationName("Peel")
     app.setOrganizationName("win-bg-tool")
 
+    # Shell first; inference runs in a dedicated process (ProcessRembgEngine)
     window = MainWindow()
     window.show()
     return app.exec()
 
 
 if __name__ == "__main__":
+    # Required for Windows spawn + PyInstaller frozen children
+    multiprocessing.freeze_support()
     raise SystemExit(main())

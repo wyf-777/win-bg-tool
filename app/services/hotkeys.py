@@ -19,15 +19,20 @@ HOTKEY_DEFS: Dict[str, Tuple[str, str, str]] = {
     # Formerly fixed — same rebinding UI as above
     "escape": (
         "返回上一级",
-        "按界面层级回退：设置/修补→主界面；灯箱→网格",
+        "按界面层级回退：设置/修补→主界面；预览→网格",
         "Esc",
     ),
-    "lightbox_prev": ("灯箱上一张", "多图灯箱中查看上一张", "Left"),
-    "lightbox_next": ("灯箱下一张", "多图灯箱中查看下一张", "Right"),
+    "lightbox_prev": ("预览上一张", "多图预览中查看上一张", "Left"),
+    "lightbox_next": ("预览下一张", "多图预览中查看下一张", "Right"),
     "peek_original": (
         "按住看原图",
-        "按住时显示原图，松开恢复结果（单图 / 并排）",
+        "按住快捷键时显示原图，松开恢复结果；也可用鼠标左键长按（单图/并排）",
         "Space",
+    ),
+    "side_by_side": (
+        "左右对照",
+        "单图预览时切换「左原图 / 右结果」并排（与界面按钮相同）",
+        "Ctrl+D",
     ),
 }
 
@@ -41,6 +46,7 @@ HOTKEY_ORDER: List[str] = [
     "lightbox_prev",
     "lightbox_next",
     "peek_original",
+    "side_by_side",
 ]
 
 # Hold-style actions: matched in keyPress/Release, not QShortcut
