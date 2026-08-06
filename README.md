@@ -32,19 +32,27 @@ python -m app.main
 
 或双击 `run.bat`。
 
-### 打包 exe（测试 / 分发）
+### 打包 exe / 安装程序（测试 / 分发）
 
 ```bat
 scripts\build_exe.bat
 ```
 
-产物：`dist\Peel\Peel.exe`（**整文件夹** `dist\Peel\` 分发，**勿只拷单个 exe**）。
+产物：`dist\Peel\Peel.exe`（**整文件夹** `dist\Peel\` 便携分发，**勿只拷单个 exe**）。
+
+**推荐：生成可选安装路径的安装包**（需 [Inno Setup 6](https://jrsoftware.org/isinfo.php)）：
+
+```bat
+scripts\build_installer.bat
+```
+
+产物：`dist\Peel-Setup-1.0.0.exe`（向导里可选安装目录）。
 
 **打包默认自带 U²-Net 轻量（`u2netp`）**  
 - 权重打进包内，首次运行复制到 exe 旁 `models\`  
 - 打包版默认可离线先抠图；其它模型可在设置中下载  
 
-详细步骤、依赖收集、多进程验收：**[docs/packaging.md](docs/packaging.md)**。
+详细步骤、依赖收集、多进程验收、**当前版本重打 / 桌面图标 / 图标缓存**：**[docs/packaging.md](docs/packaging.md)**（§11–§12）。
 
 ## 使用要点
 

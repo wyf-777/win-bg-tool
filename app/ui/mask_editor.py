@@ -417,8 +417,10 @@ class MaskEditorDialog(QWidget):
             self._sidebar_layout.addWidget(label)
 
         def style_sidebar_button(button: QPushButton, object_name: str) -> None:
+            from app.ui.button_fx import BUTTON_H
+
             button.setObjectName(object_name)
-            button.setFixedHeight(34)
+            button.setFixedHeight(BUTTON_H)
             button.setMinimumWidth(0)
             button.setSizePolicy(
                 QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed

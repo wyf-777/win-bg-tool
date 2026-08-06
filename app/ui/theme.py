@@ -25,6 +25,7 @@ class ThemeColors:
     button_disabled_text: str
     primary: str
     primary_hover: str
+    primary_pressed: str
     primary_disabled: str
     checker_a: str
     checker_b: str
@@ -49,6 +50,7 @@ LIGHT = ThemeColors(
     button_disabled_text="#a1a1a6",
     primary="#34c759",
     primary_hover="#2fb350",
+    primary_pressed="#248a3d",
     primary_disabled="#a8e6b4",
     checker_a="#e6e6e8",
     checker_b="#ffffff",
@@ -58,21 +60,25 @@ LIGHT = ThemeColors(
 
 DARK = ThemeColors(
     name="dark",
+    # Material-style dark: hierarchy via surface lift more than ink shadows
     window_bg="#1c1c1e",
     text="#f5f5f7",
     muted="#98989d",
+    # Elevated surfaces slightly lighter than window (Material overlay idea)
     card_bg="#2c2c2e",
-    card_border="#3a3a3c",
+    card_border="#48484a",
     card_drag_bg="#1e3a28",
     card_drag_border="#30d158",
+    # Chrome / controls: one step above window for readable elevation without sludge
     button_bg="#3a3a3c",
-    button_border="#48484a",
+    button_border="#636366",
     button_hover="#48484a",
-    button_pressed="#636366",
+    button_pressed="#2c2c2e",
     button_disabled_bg="#2c2c2e",
     button_disabled_text="#636366",
     primary="#30d158",
     primary_hover="#28c44c",
+    primary_pressed="#1f9a3a",
     primary_disabled="#1f6b35",
     checker_a="#3a3a3c",
     checker_b="#2c2c2e",
@@ -109,6 +115,12 @@ def resolve_theme(preference: str) -> ThemeColors:
 
 
 def build_stylesheet(c: ThemeColors) -> str:
+    from app.ui.button_fx import BUTTON_H, BUTTON_RADIUS
+
+    bh = BUTTON_H
+    # Same corner as 快捷键 KeyCaptureBtn / main-window capsules
+    chrome_r = BUTTON_RADIUS
+    br = BUTTON_RADIUS
     return f"""
     QMainWindow, QWidget {{
         background: {c.window_bg};
@@ -159,59 +171,40 @@ def build_stylesheet(c: ThemeColors) -> str:
         background: {c.window_bg};
         border: none;
     }}
-    #TitleBarBrand {{
-        font-size: 12px;
-        font-weight: 600;
-        color: {c.muted};
-        padding-left: 4px;
-    }}
-    #TitleBarDragPad {{
-        background: transparent;
-    }}
     #MainCentral {{
         background: {c.window_bg};
     }}
-    QPushButton#WinChromeBtn {{
-        min-width: 36px;
-        max-width: 36px;
-        min-height: 28px;
-        max-height: 28px;
-        padding: 0;
-        border-radius: 14px;
-        background: {c.button_bg};
-        border: 1px solid {c.button_border};
-        color: {c.text};
-        font-size: 14px;
-        font-weight: 600;
-    }}
-    QPushButton#WinChromeBtn:hover {{
-        background: {c.button_hover};
-        border-color: {c.primary};
-    }}
+    /* Window ☆ ⚙ ← – □ × : identical size / fill / shadow host (× uses WinCloseBtn) */
+    QPushButton#WinChromeBtn,
     QPushButton#WinCloseBtn {{
-        min-width: 36px;
-        max-width: 36px;
-        min-height: 28px;
-        max-height: 28px;
+        min-width: {bh}px;
+        max-width: {bh}px;
+        min-height: {bh}px;
+        max-height: {bh}px;
         padding: 0;
-        border-radius: 14px;
+        margin: 0;
+        border-radius: {chrome_r}px;
         background: {c.button_bg};
-        border: 1px solid {c.button_border};
-        color: {c.text};
-        font-size: 16px;
-        font-weight: 600;
+        border: 1px solid {c.card_border};
+        color: {c.muted};
+        font-size: 14px;
+        font-weight: 500;
     }}
+    QPushButton#WinChromeBtn:hover,
     QPushButton#WinCloseBtn:hover {{
-        background: {c.error_text};
-        border-color: {c.error_text};
-        color: #ffffff;
-    }}
-    #BrandLabel {{
-        font-size: 18px;
-        font-weight: 600;
-        letter-spacing: 0.2px;
+        background: {c.button_hover};
+        border-color: {c.button_border};
         color: {c.text};
+    }}
+    QPushButton#WinChromeBtn:pressed,
+    QPushButton#WinCloseBtn:pressed {{
+        background: {c.button_pressed};
+    }}
+    /* Icon host inside chrome buttons — no second fill behind gear/arrow */
+    QPushButton#WinChromeBtn QWidget#SlideSettingsIcon,
+    QPushButton#WinCloseBtn QWidget#SlideSettingsIcon {{
         background: transparent;
+        border: none;
     }}
     #ModelLabel {{
         color: {c.muted};
@@ -253,49 +246,67 @@ def build_stylesheet(c: ThemeColors) -> str:
     #LightboxChrome {{
         background: transparent;
         border: none;
-        min-height: 36px;
-        max-height: 44px;
+        min-height: {bh}px;
+        max-height: {bh}px;
     }}
     QPushButton#LightboxNavBtn {{
-        min-width: 40px;
-        max-width: 40px;
-        min-height: 40px;
-        max-height: 40px;
+        min-width: {bh}px;
+        max-width: {bh}px;
+        min-height: {bh}px;
+        max-height: {bh}px;
         padding: 0;
-        border-radius: 12px;
+        border-radius: {chrome_r}px;
     }}
+    /* Global buttons: height matches title-bar × */
     QPushButton {{
         background: {c.button_bg};
-        border: 1px solid {c.button_border};
-        border-radius: 10px;
-        padding: 8px 16px;
-        min-width: 88px;
+        border: 1px solid {c.card_border};
+        border-radius: {chrome_r}px;
+        padding: 0 14px;
+        min-width: 72px;
+        min-height: {bh}px;
+        max-height: {bh}px;
         color: {c.text};
     }}
     QPushButton:hover {{
         background: {c.button_hover};
+        border-color: {c.button_border};
+        color: {c.text};
     }}
     QPushButton:pressed {{
         background: {c.button_pressed};
+        border-color: {c.button_border};
     }}
     QPushButton:disabled {{
         color: {c.button_disabled_text};
         background: {c.button_disabled_bg};
+        border-color: {c.card_border};
     }}
+    /* Primary fill — same height as title-bar × */
     QPushButton#PrimaryBtn {{
         background: {c.primary};
-        border: none;
-        color: white;
+        border: 1px solid {c.primary};
+        color: #ffffff;
         font-weight: 600;
         min-width: 100px;
-        padding: 0 18px;
-        border-radius: 18px;
+        min-height: {bh}px;
+        max-height: {bh}px;
+        padding: 0 16px;
+        border-radius: {br}px;
     }}
     QPushButton#PrimaryBtn:hover {{
         background: {c.primary_hover};
+        border-color: {c.primary_hover};
+        color: #ffffff;
+    }}
+    QPushButton#PrimaryBtn:pressed {{
+        background: {c.primary_pressed};
+        border-color: {c.primary_pressed};
+        color: #ffffff;
     }}
     QPushButton#PrimaryBtn:disabled {{
         background: {c.primary_disabled};
+        border-color: {c.primary_disabled};
         color: #ffffff;
     }}
     QComboBox {{
@@ -354,59 +365,240 @@ def build_stylesheet(c: ThemeColors) -> str:
     }}
     QPushButton#SettingsBtn {{
         min-width: 72px;
-        padding: 6px 12px;
+        min-height: {bh}px;
+        max-height: {bh}px;
+        padding: 0 14px;
     }}
-    /* Bottom action buttons — same height as open capsule (~36) */
+    /* Bottom action buttons — height = title-bar × */
     QPushButton#ActionBtn {{
         min-width: 72px;
-        padding: 0 16px;
-        border-radius: 18px;
+        min-height: {bh}px;
+        max-height: {bh}px;
+        padding: 0 14px;
+        border-radius: {br}px;
         background: {c.button_bg};
-        border: 1px solid {c.button_border};
+        border: 1px solid {c.card_border};
         color: {c.text};
         font-weight: 500;
     }}
     QPushButton#ActionBtn:hover {{
         background: {c.button_hover};
-        border-color: {c.primary};
+        border-color: {c.button_border};
+        color: {c.text};
+    }}
+    QPushButton#ActionBtn:pressed {{
+        background: {c.button_pressed};
+        border-color: {c.button_border};
     }}
     QPushButton#ActionBtn:disabled {{
         color: {c.button_disabled_text};
         background: {c.button_disabled_bg};
+        border-color: {c.card_border};
     }}
     QPushButton#CompactBtn {{
         min-width: 72px;
         max-width: 120px;
-        padding: 6px 12px;
-        border-radius: 10px;
+        min-height: {bh}px;
+        max-height: {bh}px;
+        padding: 0 12px;
+        border-radius: {chrome_r}px;
     }}
     QPushButton#KeyCaptureBtn {{
         min-width: 120px;
-        padding: 6px 14px;
-        border-radius: 8px;
+        min-height: {bh}px;
+        max-height: {bh}px;
+        padding: 0 14px;
+        border-radius: {chrome_r}px;
         background: {c.button_bg};
-        border: 1px solid {c.button_border};
+        border: 1px solid {c.card_border};
         color: {c.text};
         font-weight: 600;
     }}
     QPushButton#KeyCaptureBtn:hover {{
-        border-color: {c.primary};
+        border-color: {c.button_border};
         background: {c.button_hover};
+        color: {c.text};
+    }}
+    QPushButton#KeyCaptureBtn:pressed {{
+        background: {c.button_pressed};
+        border-color: {c.button_border};
     }}
     QPushButton#KeyCaptureBtn[recording="true"] {{
         border-color: {c.primary};
         background: {c.card_drag_bg};
         color: {c.text};
     }}
-    /* Fixed mouse-gesture badge (same size as key capture, not clickable) */
-    QLabel#HotkeyGestureBadge {{
-        min-width: 120px;
-        padding: 6px 10px;
-        border-radius: 8px;
+    /* Settings controls — must override global QPushButton min/max or CJK clips */
+    QPushButton#SettingsCtrlBtn {{
+        min-width: 0px;
+        min-height: {bh}px;
+        max-height: 48px;
+        padding: 0 16px;
+        border-radius: {chrome_r}px;
+        background: {c.button_bg};
+        border: 1px solid {c.card_border};
+        color: {c.text};
+        font-size: 13px;
+        font-weight: 600;
+        text-align: center;
+    }}
+    QPushButton#SettingsCtrlBtn:hover {{
+        border-color: {c.button_border};
+        background: {c.button_hover};
+        color: {c.text};
+    }}
+    QPushButton#SettingsCtrlBtn:pressed {{
+        background: {c.button_pressed};
+        border-color: {c.button_border};
+    }}
+    QPushButton#SettingsCtrlBtn:disabled {{
+        color: {c.button_disabled_text};
+        background: {c.button_disabled_bg};
+        border-color: {c.card_border};
+    }}
+    /* 浏览 / 用默认 — custom width; height = 清空队列 ({bh}) */
+    QPushButton#SettingsPathSideBtn {{
+        min-width: 96px;
+        max-width: 96px;
+        min-height: {bh}px;
+        max-height: {bh}px;
+        padding: 0 14px;
+        border-radius: {chrome_r}px;
+        background: {c.button_bg};
+        border: 1px solid {c.card_border};
+        color: {c.text};
+        font-size: 13px;
+        font-weight: 600;
+        text-align: center;
+    }}
+    QPushButton#SettingsPathSideBtn:hover {{
+        border-color: {c.button_border};
+        background: {c.button_hover};
+        color: {c.text};
+    }}
+    QPushButton#SettingsPathSideBtn:pressed {{
+        background: {c.button_pressed};
+        border-color: {c.button_border};
+    }}
+    /* 应用 / 关闭应用 / 恢复默认 — custom width; height = 清空队列 */
+    QPushButton#SettingsFooterBtn {{
+        min-width: 112px;
+        max-width: 112px;
+        min-height: {bh}px;
+        max-height: {bh}px;
+        padding: 0 14px;
+        border-radius: {chrome_r}px;
+        background: {c.button_bg};
+        border: 1px solid {c.card_border};
+        color: {c.text};
+        font-size: 13px;
+        font-weight: 600;
+        text-align: center;
+    }}
+    QPushButton#SettingsFooterBtn:hover {{
+        border-color: {c.button_border};
+        background: {c.button_hover};
+        color: {c.text};
+    }}
+    QPushButton#SettingsFooterBtn:pressed {{
+        background: {c.button_pressed};
+        border-color: {c.button_border};
+    }}
+    /* Path field — same height as 清空队列 / side chips */
+    QLineEdit#SettingsPathEdit {{
+        min-height: {bh}px;
+        max-height: {bh}px;
+        padding: 0 12px;
+        border-radius: {chrome_r}px;
+        background: {c.button_bg};
+        border: 1px solid {c.card_border};
+        color: {c.text};
+        font-size: 13px;
+        selection-background-color: {c.primary};
+        selection-color: #ffffff;
+    }}
+    QLineEdit#SettingsPathEdit:read-only {{
+        background: {c.button_bg};
+        color: {c.text};
+    }}
+    QLineEdit#SettingsPathEdit:focus {{
+        border-color: {c.button_border};
+    }}
+    /* ☆ about / support panel (他的2.png)
+       Outer shell is translucent; only the inner card is opaque + rounded. */
+    #StarAboutPanelShell {{
+        background: transparent;
+        border: none;
+    }}
+    #StarAboutPanel {{
         background: {c.card_bg};
         border: 1px solid {c.card_border};
+        border-radius: 14px;
+    }}
+    QPushButton#StarAboutBtn {{
+        min-height: 40px;
+        max-height: 40px;
+        padding: 0 14px;
+        border-radius: 12px;
+        background: {c.button_bg};
+        border: 1px solid {c.card_border};
+        color: {c.text};
+        font-weight: 500;
+        font-size: 14px;
+    }}
+    QPushButton#StarAboutBtn:hover {{
+        background: {c.button_hover};
+        border-color: {c.button_border};
+        color: {c.text};
+    }}
+    QPushButton#StarAboutBtn:pressed {{
+        background: {c.button_pressed};
+        border-color: {c.button_border};
+    }}
+    #StarAboutCaption {{
         color: {c.muted};
-        font-size: 12px;
+        font-size: 14px;
+        background: transparent;
+        border: none;
+        padding: 2px 0 2px 0;
+    }}
+    /* QR tile: white rounded square + soft shadow (立体感)
+       Dark: stronger rim so the tile lifts off dark panel (shadow alone is weak). */
+    #StarQrColumn {{
+        background: transparent;
+        border: none;
+    }}
+    #StarQrImageHost {{
+        background: transparent;
+        /* Soft rim (not a heavy frame) — aids dark elevation without ink shadow */
+        border: 1px solid {c.button_border};
+        border-radius: 6px;
+    }}
+    #StarQrImage {{
+        background: transparent;
+        border: none;
+        border-radius: 6px;
+    }}
+    /* Label on vertical axis under image */
+    #StarQrCaption {{
+        color: {c.muted};
+        font-size: 13px;
+        font-weight: 500;
+        background: transparent;
+        border: none;
+        padding: 0;
+    }}
+    /* Fixed mouse-gesture badge: same chrome as KeyCaptureBtn + shadow; not clickable */
+    QLabel#HotkeyGestureBadge {{
+        min-width: 120px;
+        min-height: {bh}px;
+        max-height: {bh}px;
+        padding: 0 14px;
+        border-radius: {chrome_r}px;
+        background: {c.button_bg};
+        border: 1px solid {c.card_border};
+        color: {c.muted};
+        font-size: 13px;
         font-weight: 600;
     }}
     QFrame#HotkeySeparator {{
@@ -445,7 +637,7 @@ def build_stylesheet(c: ThemeColors) -> str:
     #MainActionsBar {{
         background: transparent;
         border: none;
-        min-height: 40px;
+        min-height: {bh}px;
     }}
     #MainFooter {{
         background: transparent;
@@ -494,13 +686,15 @@ def build_stylesheet(c: ThemeColors) -> str:
         background: transparent;
         border: none;
     }}
-    /* Edge-style full-window settings */
+    /* Edge-style full-window settings (back lives in title-bar chrome) */
     #SettingsPage {{
         background: {c.window_bg};
     }}
-    #SettingsTopBar {{
-        background: {c.card_bg};
-        border-bottom: 1px solid {c.card_border};
+    #SettingsChromeHost {{
+        background: transparent;
+        border: none;
+        margin: 0;
+        padding: 0;
     }}
     #SettingsTitle {{
         font-size: 18px;
@@ -547,6 +741,63 @@ def build_stylesheet(c: ThemeColors) -> str:
         background: transparent;
         margin-top: 4px;
     }}
+    /* FAQ accordion — no panel chrome (no fill / no outer box) */
+    #FaqPanel {{
+        background: transparent;
+        border: none;
+    }}
+    #FaqListHost {{
+        background: transparent;
+        border: none;
+    }}
+    #FaqListScroll {{
+        background: transparent;
+        border: none;
+    }}
+    #FaqListScroll > QWidget > QWidget {{
+        background: transparent;
+    }}
+    #FaqAccordionItem {{
+        background: transparent;
+        border: none;
+        border-bottom: 1px solid {c.card_border};
+        border-radius: 0;
+    }}
+    #FaqAccordionHeader {{
+        background: transparent;
+        border: none;
+        min-height: 44px;
+    }}
+    #FaqAccordionHeader:hover {{
+        background: transparent;
+        color: {c.primary};
+    }}
+    #FaqAccordionTitle {{
+        color: {c.text};
+        font-size: 13px;
+        font-weight: 500;
+        background: transparent;
+        border: none;
+    }}
+    #FaqAccordionChevron {{
+        color: {c.muted};
+        font-size: 16px;
+        font-weight: 600;
+        background: transparent;
+        border: none;
+    }}
+    #FaqAccordionBody {{
+        background: transparent;
+        border: none;
+    }}
+    #FaqAccordionBodyText {{
+        color: {c.muted};
+        font-size: 13px;
+        font-weight: 400;
+        background: transparent;
+        border: none;
+        line-height: 1.5;
+    }}
     #SettingsBodyText {{
         font-size: 13px;
         color: {c.muted};
@@ -574,13 +825,15 @@ def build_stylesheet(c: ThemeColors) -> str:
     }}
     QPushButton#CompareBtn {{
         min-width: 72px;
-        padding: 4px 12px;
+        min-height: {bh}px;
+        max-height: {bh}px;
+        padding: 0 12px;
         font-size: 13px;
         font-weight: 600;
         border: 1px solid {c.card_border};
         background: {c.card_bg};
         color: {c.muted};
-        border-radius: 8px;
+        border-radius: {chrome_r}px;
         margin: 0 2px;
     }}
     QPushButton#CompareBtn:checked {{
@@ -590,8 +843,12 @@ def build_stylesheet(c: ThemeColors) -> str:
     }}
     QPushButton#CompareBtn:hover:!checked {{
         color: {c.text};
-        border-color: {c.primary};
+        border-color: {c.button_border};
         background: {c.button_hover};
+    }}
+    QPushButton#CompareBtn:pressed:!checked {{
+        background: {c.button_pressed};
+        border-color: {c.button_border};
     }}
     QPushButton#CompareBtn:disabled {{
         color: {c.button_disabled_text};
@@ -651,8 +908,10 @@ def build_stylesheet(c: ThemeColors) -> str:
     QPushButton#RepairClearBtn {{
         min-width: 0;
         max-width: 16777215;
-        padding: 6px 10px;
-        border-radius: 8px;
+        min-height: {bh}px;
+        max-height: {bh}px;
+        padding: 0 10px;
+        border-radius: {chrome_r}px;
         text-align: center;
     }}
     QPushButton#RepairToolBtn:checked {{
@@ -664,14 +923,22 @@ def build_stylesheet(c: ThemeColors) -> str:
     QPushButton#RepairToolBtn:hover:!checked,
     QPushButton#RepairActionBtn:hover,
     QPushButton#RepairClearBtn:hover {{
-        border-color: {c.primary};
+        background: {c.button_hover};
+        border-color: {c.button_border};
+        color: {c.text};
+    }}
+    QPushButton#RepairToolBtn:pressed:!checked,
+    QPushButton#RepairActionBtn:pressed,
+    QPushButton#RepairClearBtn:pressed {{
+        background: {c.button_pressed};
+        border-color: {c.button_border};
     }}
     QPushButton#RepairToolBtn:disabled,
     QPushButton#RepairActionBtn:disabled,
     QPushButton#RepairClearBtn:disabled {{
         color: {c.button_disabled_text};
         background: {c.button_disabled_bg};
-        border-color: {c.button_border};
+        border-color: {c.card_border};
     }}
     QPushButton#RepairActionBtn {{
         font-weight: 600;
@@ -682,8 +949,10 @@ def build_stylesheet(c: ThemeColors) -> str:
     QPushButton#RepairBackBtn,
     QPushButton#RepairFinishBtn {{
         min-width: 72px;
-        padding: 6px 14px;
-        border-radius: 8px;
+        min-height: {bh}px;
+        max-height: {bh}px;
+        padding: 0 14px;
+        border-radius: {chrome_r}px;
     }}
     QPushButton#RepairFinishBtn {{
         background: {c.primary};
@@ -692,6 +961,11 @@ def build_stylesheet(c: ThemeColors) -> str:
         font-weight: 600;
     }}
     QPushButton#RepairFinishBtn:hover {{
+        background: {c.primary_hover};
+        border-color: {c.primary_hover};
+        color: #ffffff;
+    }}
+    QPushButton#RepairFinishBtn:pressed {{
         background: {c.primary_hover};
         border-color: {c.primary_hover};
     }}

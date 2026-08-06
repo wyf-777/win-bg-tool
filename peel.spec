@@ -55,6 +55,20 @@ extra_datas = []
 if u2netp.is_file():
     extra_datas.append((str(u2netp), "models"))
 
+# App icon (also placed next to Peel.exe via COLLECT for desktop shortcuts)
+_icon_src = root / "packaging" / "peel.ico"
+if not _icon_src.is_file():
+    _icon_src = root / "app" / "assets" / "peel.ico"
+if _icon_src.is_file():
+    # Root of onedir → {app}\peel.ico after install
+    extra_datas.append((str(_icon_src), "."))
+
+# ☆ support panel QR codes (微信 / 支付宝)
+assets_dir = root / "app" / "assets"
+if assets_dir.is_dir():
+    for qr in assets_dir.glob("*_qr.png"):
+        extra_datas.append((str(qr), "app/assets"))
+
 # Override rembg.sessions so optional backends (SAM/jsonschema) cannot break import
 sessions_override = root / "packaging" / "rembg_sessions" / "__init__.py"
 if sessions_override.is_file():
@@ -204,6 +218,10 @@ if not _seen_sessions_init and sessions_override.is_file():
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
+_icon = root / "packaging" / "peel.ico"
+if not _icon.is_file():
+    _icon = root / "app" / "assets" / "peel.ico"
+
 exe = EXE(
     pyz,
     a.scripts,
@@ -220,6 +238,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon=str(_icon) if _icon.is_file() else None,
 )
 
 coll = COLLECT(

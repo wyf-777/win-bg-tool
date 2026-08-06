@@ -62,14 +62,19 @@ from app.ui.errors import friendly_error
 from app.ui.mask_editor import MaskEditorDialog
 from app.ui.settings_dialog import SettingsPage
 from app.ui.theme import build_stylesheet, resolve_theme
-from app.ui.title_bar import WindowTitleBar
+from app.ui.button_fx import (
+    BUTTON_H,
+    polish_button_tree,
+    set_button_shadow_theme,
+)
+from app.ui.star_panel import StarAboutPanel
+from app.ui.title_bar import WindowControlButton, WindowTitleBar
 from app.ui.win_chrome import edges_at, start_system_resize
 from app.ui.widgets import (
     SlideClearButton,
     SlideExportButton,
     SlideOpenButton,
     SlideRepairButton,
-    SlideSettingsButton,
 )
 from app.ui.workspace import Workspace
 
@@ -127,15 +132,14 @@ class MainWindow(QMainWindow):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
 
-        # Custom title bar (min / max / close) — seamless with window_bg
+        # One-row top chrome: ☆ · status · settings · – □ ×
         self.title_bar = WindowTitleBar(self)
         self.title_bar.minimize_requested.connect(self.showMinimized)
         self.title_bar.maximize_requested.connect(self._toggle_maximize)
         self.title_bar.close_requested.connect(self.close)
         outer.addWidget(self.title_bar, 0)
 
-        # Edge resize: only on press near frame (no mouse-move filter — that
-        # was fighting UI responsiveness on every move/hover).
+        # Edge resize: only on press near frame
         self.installEventFilter(self)
         central.installEventFilter(self)
 
@@ -146,12 +150,9 @@ class MainWindow(QMainWindow):
         # ── Page 0: main ───────────────────────────────────
         main_page = QWidget()
         root = QVBoxLayout(main_page)
-        root.setContentsMargins(20, 16, 20, 16)
+        root.setContentsMargins(20, 8, 20, 16)
         root.setSpacing(12)
 
-        top = QHBoxLayout()
-        brand = QLabel("🥝  Peel")
-        brand.setObjectName("BrandLabel")
         self.model_label = QLabel("本机 · 引擎准备中…")
         self.model_label.setObjectName("ModelLabel")
         self.model_label.setToolTip(
@@ -160,14 +161,30 @@ class MainWindow(QMainWindow):
         self.model_label.setAlignment(
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
         )
-        self.btn_settings = SlideSettingsButton()
+        # Title-bar slot: same size/shadow as × — no host wrapper (host clipped shadow)
+        self.btn_settings = WindowControlButton(icon_kind="settings")
+        self.btn_settings.setToolTip("设置")
+        self.btn_settings.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_settings.clicked.connect(self.open_settings)
-        top.addWidget(brand)
-        top.addStretch(1)
-        top.addWidget(self.model_label)
-        top.addSpacing(8)
-        top.addWidget(self.btn_settings)
-        root.addLayout(top)
+        self.btn_settings_back = WindowControlButton(icon_kind="arrow_left")
+        self.btn_settings_back.setToolTip("返回主界面（Esc 同样可返回）")
+        self.btn_settings_back.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_settings_back.clicked.connect(self.close_settings)
+        self.btn_settings_back.hide()
+
+        # Left: star pill (like 他的.png 左上角 ☆) → support panel (他的2.png)
+        self.btn_star = WindowControlButton(icon_kind="star")
+        self.btn_star.setToolTip("关于 / 反馈 / 支持")
+        self.btn_star.clicked.connect(self._toggle_star_panel)
+        self._star_panel: StarAboutPanel | None = None
+
+        self.title_bar.add_leading(self.btn_star)
+        self.title_bar.add_leading_stretch(1)
+        self.title_bar.add_leading(self.model_label)
+        self.title_bar.add_leading_spacing(8)
+        # Direct leading — same layout slot style as – □ × (shadow not clipped)
+        self.title_bar.add_leading(self.btn_settings)
+        self.title_bar.add_leading(self.btn_settings_back)
 
         self.workspace = Workspace()
         self.workspace.paths_dropped.connect(self.add_paths)
@@ -230,7 +247,7 @@ class MainWindow(QMainWindow):
         actions_host.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
         )
-        actions_host.setMinimumHeight(40)
+        actions_host.setMinimumHeight(BUTTON_H + 4)
         actions = QHBoxLayout(actions_host)
         actions.setSpacing(8)
         actions.setContentsMargins(0, 0, 0, 0)
@@ -238,14 +255,14 @@ class MainWindow(QMainWindow):
         self.btn_open = SlideOpenButton()
         self.btn_open.clicked.connect(self.open_files)
 
-        # Secondary actions — same height as capsules (36 visual)
+        # Secondary actions — same height as title-bar × / capsules
         self.btn_clear = SlideClearButton()
         self.btn_clear.setEnabled(False)
         self.btn_clear.clicked.connect(self.clear_session)
 
         self.btn_export_sel = QPushButton("导出选中")
         self.btn_export_sel.setObjectName("ActionBtn")
-        self.btn_export_sel.setFixedHeight(36)
+        self.btn_export_sel.setFixedHeight(BUTTON_H)
         self.btn_export_sel.setMinimumWidth(72)
         self.btn_export_sel.setEnabled(False)
         self.btn_export_sel.clicked.connect(self.export_selected)
@@ -285,7 +302,7 @@ class MainWindow(QMainWindow):
 
         # ── Page 1: settings (full window) ─────────────────
         self.settings_page = SettingsPage()
-        self.settings_page.back_requested.connect(self.close_settings)
+        # Back is the title-bar settings slot (no in-page back button)
         self.settings_page.theme_changed.connect(self._on_theme_changed)
         self.settings_page.model_changed.connect(self._on_model_setting_changed)
         self.settings_page.export_prefix_changed.connect(self._on_prefix_changed)
@@ -335,8 +352,10 @@ class MainWindow(QMainWindow):
         # Folder watch after first paint; engine boot is independent readiness FSM
         QTimer.singleShot(800, self._apply_folder_watch)
         QTimer.singleShot(0, self._boot_engine)
+        # Light cache only (disk + accel) — no grab / layout storm
+        QTimer.singleShot(1200, self._warm_settings_ui)
 
-        self._apply_theme()
+        self._apply_theme()  # also polishes button shadows for current theme
         self.title_bar.set_maximized_state(self.isMaximized())
 
         app = QApplication.instance()
@@ -402,6 +421,8 @@ class MainWindow(QMainWindow):
     def _apply_theme(self) -> None:
         colors = resolve_theme(self._theme_pref)
         sheet = build_stylesheet(colors)
+        # Dark bg swallows light-theme shadows — switch elevation recipe first
+        set_button_shadow_theme(dark=(colors.name == "dark"))
         # Capsule buttons paint their own pill; sync theme colors
         capsule_kwargs = dict(
             bg=colors.button_bg,
@@ -413,15 +434,15 @@ class MainWindow(QMainWindow):
             text=colors.text,
             disabled_text=colors.button_disabled_text,
         )
-        for attr in ("btn_settings", "btn_open", "btn_clear", "btn_repair", "btn_save"):
+        for attr in (
+            "btn_open",
+            "btn_clear",
+            "btn_repair",
+            "btn_save",
+        ):
             btn = getattr(self, attr, None)
             if btn is not None and hasattr(btn, "apply_theme_colors"):
                 btn.apply_theme_colors(**capsule_kwargs)
-        # Settings page back button (created with settings_page)
-        if hasattr(self, "settings_page") and hasattr(self.settings_page, "btn_back"):
-            back = self.settings_page.btn_back
-            if hasattr(back, "apply_theme_colors"):
-                back.apply_theme_colors(**capsule_kwargs)
         # Repair page back button (created on demand)
         if self._repair_page is not None and hasattr(
             self._repair_page, "apply_theme_colors"
@@ -453,6 +474,8 @@ class MainWindow(QMainWindow):
         }}
         """
         self.setStyleSheet(sheet)
+        # Refresh elevation on every button after palette change
+        polish_button_tree(self, refresh=True)
         self.workspace.apply_theme_colors(
             checker_a=colors.checker_a,
             checker_b=colors.checker_b,
@@ -470,6 +493,23 @@ class MainWindow(QMainWindow):
     def _on_system_scheme_changed(self) -> None:
         if self._theme_pref == "system":
             self._apply_theme()
+
+    def _toggle_star_panel(self) -> None:
+        """☆ → support panel matching 他的2.png (QQ / 反馈 / 赞赏码)."""
+        if self._star_panel is not None and self._star_panel.isVisible():
+            self._star_panel.close()
+            self._star_panel = None
+            return
+        panel = StarAboutPanel(self)
+        panel.status.connect(self.statusBar().showMessage)
+        panel.closed.connect(self._on_star_panel_closed)
+        self._star_panel = panel
+        # Anchor under the star button (global coords)
+        origin = self.btn_star.mapToGlobal(self.btn_star.rect().bottomLeft())
+        panel.popup_at(origin)
+
+    def _on_star_panel_closed(self) -> None:
+        self._star_panel = None
 
     def is_settings_open(self) -> bool:
         return self.root_stack.currentWidget() is self.settings_page
@@ -494,12 +534,41 @@ class MainWindow(QMainWindow):
         if not enabled:
             self.workspace.set_hold_peek(False)
 
+    def _set_settings_chrome_mode(self, *, in_settings: bool) -> None:
+        """Title-bar slot: ⚙ ↔ ← (same size as ×), mutually exclusive."""
+        if in_settings:
+            self.btn_settings.hide()
+            self.btn_settings_back.show()
+        else:
+            self.btn_settings_back.hide()
+            self.btn_settings.show()
+
+    def _warm_settings_ui(self) -> None:
+        """Idle: pre-fill model-disk + accel caches only (no grab)."""
+        sp = getattr(self, "settings_page", None)
+        if sp is None:
+            return
+        try:
+            if hasattr(sp, "warm_idle_caches"):
+                sp.warm_idle_caches()
+        except Exception:
+            pass
+
     @Slot()
     def open_settings(self) -> None:
+        """
+        Navigate first, sync later.
+
+        Click frame: switch stack + title chrome only.
+        Next event-loop turn (settings showEvent → singleShot(0)): fill fields,
+        scan models, accel status. Matches mature-app "paint then hydrate".
+        """
         # Always allow settings — e.g. switch to a local model while another
         # model is still downloading (download will be cancelled).
         self._set_main_shortcuts_enabled(False)
+        # Instant UI feedback — do not call heavy sync here
         self.root_stack.setCurrentWidget(self.settings_page)
+        self._set_settings_chrome_mode(in_settings=True)
         if self.session.is_busy() or self.engine.is_loading():
             self.statusBar().showMessage(
                 "设置 — 处理/下载中也可切换到「本地已有」的模型；"
@@ -507,12 +576,13 @@ class MainWindow(QMainWindow):
             )
         else:
             self.statusBar().showMessage(
-                "设置 — 左侧点分类 · 改完点「返回」或按 Esc 回到主界面"
+                "设置 — 左侧点分类 · 改完点顶栏「返回」或按 Esc 回到主界面"
             )
 
     @Slot()
     def close_settings(self) -> None:
         self.root_stack.setCurrentIndex(0)
+        self._set_settings_chrome_mode(in_settings=False)
         self._set_main_shortcuts_enabled(True)
 
     @Slot(str, str)
@@ -1268,6 +1338,7 @@ class MainWindow(QMainWindow):
         self._repair_page = page
         self._repair_item_id = item.id
         self.root_stack.addWidget(page)
+        polish_button_tree(page)
         self._set_main_shortcuts_enabled(False)
         self.root_stack.setCurrentWidget(page)
         page.canvas.setFocus(Qt.FocusReason.OtherFocusReason)
@@ -1431,7 +1502,7 @@ class MainWindow(QMainWindow):
 
         层级（深 → 浅）:
           修补页（有草稿选区先清选区）→ 主界面
-          设置页 → 主界面（与左上角「返回」相同）
+          设置页 → 主界面（与顶栏「返回」相同）
           灯箱 → 多图网格
           主界面 → 已在最顶层
         """

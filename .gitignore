@@ -4,15 +4,24 @@ __pycache__/
 .venv/
 venv/
 env/
+# Downloaded / local model weights (never ship in git)
 models/*
 !models/.gitkeep
 *.onnx
+*.onnx.part
+*.part
+
 .DS_Store
 Thumbs.db
+
+# Packaging outputs (PyInstaller + installer)
 dist/
 build/
 *.spec
 !peel.spec
+# If Setup.exe is ever written outside dist/
+Peel-Setup-*.exe
+
 *.egg-info/
 .pytest_cache/
 .mypy_cache/

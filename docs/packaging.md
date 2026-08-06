@@ -1,9 +1,9 @@
 # Peel 打包指南（PyInstaller）
 
-最后更新：2026-08-02
+最后更新：2026-08-06
 
-本文记录 **F15 打包 exe** 的踩坑、根因、固定做法与验收清单，避免下次再出现  
-`cannot import name 'remove' from 'rembg'` 一类「开发正常、exe 挂掉」的问题。
+本文记录 **F15 打包 exe + 安装包** 的踩坑、根因、固定做法与验收清单，避免下次再出现  
+`cannot import name 'remove' from 'rembg'`、桌面图标一直是 Python 默认标、误用旧 `dist` 打包等一类问题。
 
 **相关：** [architecture-loading.md](architecture-loading.md)（进程引擎 / 自愈）· [progress.md](progress.md)
 
@@ -24,6 +24,8 @@
 
 ### 命令
 
+**A. 仅便携目录（onedir）**
+
 ```bat
 scripts\build_exe.bat
 ```
@@ -35,6 +37,21 @@ python -m pip install -r requirements.txt "pyinstaller>=6.0"
 python -m PyInstaller --noconfirm --clean peel.spec
 ```
 
+**B. 带「选择安装位置」的安装包（推荐给用户）**
+
+```bat
+scripts\build_installer.bat
+```
+
+- 先跑 PyInstaller，再用 **Inno Setup** 打成 `Setup.exe`
+- 向导页可改安装目录（默认 `C:\Program Files\Peel`）
+- 可选桌面快捷方式、装完启动
+- 仅重打安装包（已有 `dist\Peel\`）：`scripts\build_installer.bat --installer-only`
+
+依赖：**Inno Setup 6**（本机已可用 `winget install --id JRSoftware.InnoSetup -e`）。  
+脚本会找 `ISCC.exe`；也可设环境变量 `INNO_SETUP_PATH` 指向它。  
+脚本：`packaging\peel_setup.iss`；中文界面语言文件：`packaging\languages\ChineseSimplified.isl`。
+
 ### 产物
 
 ```
@@ -44,9 +61,12 @@ dist\Peel\
   _internal\            # 运行时依赖（必须整目录带走）
     models\u2netp.onnx  # 包内只读资源（_MEIPASS）
     rembg\ numpy\ cv2\ onnxruntime\ ...
+
+dist\Peel-Setup-1.0.0.exe   # 安装程序（选路径安装，推荐分发这个）
 ```
 
-**分发时必须整包复制 `dist\Peel\` 文件夹，禁止只拷贝 `Peel.exe`。**
+**便携分发**时必须整包复制 `dist\Peel\` 文件夹，禁止只拷贝 `Peel.exe`。  
+**普通用户**建议只发 `Peel-Setup-*.exe`。
 
 ### 多进程（必测）
 
@@ -305,11 +325,12 @@ from rembg import remove, new_session
 
 ## 8. 分发与用户侧注意
 
-1. **整目录分发** `dist\Peel\`（zip 整个文件夹）  
+1. **整目录分发** `dist\Peel\`（zip 整个文件夹），或只发 **`Peel-Setup-*.exe`**  
 2. 解压路径尽量短、无奇怪权限；避免只读介质当「可写 models 目录」  
 3. 杀软可能拦截未知 exe / 大量 DLL：首次运行允许  
 4. 「更快处理」依赖本机 DirectML/CUDA 等，失败会回落 CPU（见 F14 设计），与打包完整性无关  
-5. 其它大模型首次切换仍需联网下载到 exe 旁 `models\`
+5. 其它大模型首次切换仍需联网下载到 exe 旁 `models\`  
+6. **安装包必须用当前源码重打的 `dist\Peel\`**，不要拿很久以前的目录只重跑 Inno（见 §11）
 
 ---
 
@@ -317,11 +338,15 @@ from rembg import remove, new_session
 
 | 路径 | 作用 |
 |------|------|
-| `peel.spec` | PyInstaller 规格：collect_all、模型、sessions 覆盖 |
-| `scripts/build_exe.bat` | 一键打包入口 |
+| `peel.spec` | PyInstaller 规格：collect_all、模型、sessions 覆盖、**exe icon** |
+| `scripts/build_exe.bat` | 一键打包 onedir 入口 |
+| `scripts/build_installer.bat` | onedir + Inno 安装包；`--installer-only` 仅重打 Setup |
+| `packaging/peel_setup.iss` | Inno Setup：可选安装路径、桌面快捷方式、图标 |
+| `packaging/peel.ico` | 应用图标（由产品图转多尺寸 ICO） |
+| `packaging/languages/ChineseSimplified.isl` | 安装向导中文 |
 | `packaging/rembg_sessions/__init__.py` | 防御式 sessions 注册（覆盖上游） |
 | `app/runtime_paths.py` | 冻结路径 / 内置模型复制 |
-| `app/engines/local_rembg.py` | rembg 导入兜底与推理 |
+| `app/engines/local_rembg.py` | rembg 导入兜底与推理；GitHub 镜像下载 |
 | `app/ui/errors.py` | 用户可见错误文案 |
 | `models/u2netp.onnx` | 打包默认权重源文件 |
 | `docs/research-rembg.md` | rembg 调研（产品侧） |
@@ -336,6 +361,98 @@ from rembg import remove, new_session
 | 2026-08 | 打包 exe 报 `cannot import name 'remove' from 'rembg'` | 根因：numpy/numba 半截包 + rembg 全量 sessions；fix：`collect_all` 全家桶 + sessions 覆盖 + 重打包 |
 | 同上 | 只收集 rembg/ort/PIL 不够 | 补 numpy/cv2/pymatting/scipy/numba/llvmlite/jsonschema 链 |
 | 同上 | 调试时误判 cv2.typing 遮蔽 typing | 勿把 cv2 目录加入 sys.path 做模拟 |
+| 2026-08-06 | 桌面快捷方式一直是 Python 默认图标 | 见 §12：多尺寸 ICO + 独立 `peel.ico` + 清图标缓存 |
+| 同上 | 用户要「当前版本」却打了旧 dist | 必须先 `build_exe` / 全量 `build_installer`，禁止只对陈旧 `dist\Peel` 跑 Inno |
+| 同上 | `dist\Peel` 拒绝访问、COLLECT 失败 | 先结束所有 `Peel.exe` 再打包 |
+
+---
+
+## 11. 注意事项：务必打「当前版本」
+
+### 11.1 禁止用旧目录冒充新版本
+
+| 错误做法 | 正确做法 |
+|----------|----------|
+| 只改 UI/代码后执行 `build_installer.bat --installer-only` | 源码有变更时跑 **完整** `scripts\build_installer.bat`（先 PyInstaller 再 Inno） |
+| 复制很久以前的 `dist\Peel` 再压安装包 | 以 **今天** 的 `python -m PyInstaller … peel.spec` 产物为准 |
+| 开发机还开着 `Peel.exe` 就重打 | 先 `taskkill /F /IM Peel.exe`，否则可能 `PermissionError` 删不掉 `_internal` |
+
+### 11.2 验收「是不是当前版本」
+
+- 看 `dist\Peel\Peel.exe` 的**修改时间**是否晚于最后一次源码提交/本地改动  
+- 安装包 `dist\Peel-Setup-*.exe` 的修改时间应 **≥** 上述 exe  
+- 若用户反馈「装完还是旧界面」：几乎一定是装了旧 Setup 或没卸旧快捷方式
+
+### 11.3 安装包 vs 便携目录
+
+| 分发物 | 适用 |
+|--------|------|
+| `Peel-Setup-*.exe` | 普通用户：向导选安装路径、可选桌面图标、卸载项 |
+| `dist\Peel\` 整夹 zip | 便携/调试：勿只拷贝单个 exe |
+
+---
+
+## 12. 注意事项：应用图标与桌面快捷方式
+
+产品图（如 `导出\图标.jpg`）**不能**直接给 Windows 当 exe/快捷方式图标，需转成 **多尺寸 `.ico`**。
+
+### 12.1 固定产物与接线
+
+| 项 | 约定 |
+|----|------|
+| 源文件 | `packaging/peel.ico`（16～256 多尺寸；PNG-in-ICO 亦可） |
+| PyInstaller | `peel.spec` → `EXE(..., icon=packaging/peel.ico)` |
+| 安装目录 | 额外安装 `{app}\peel.ico`（与 `Peel.exe` 同级） |
+| Inno 桌面/开始菜单 | `IconFilename: {app}\peel.ico`（**不要**只写 `IconFilename: Peel.exe` + `IconIndex: 0` 指望总能刷新） |
+| Setup 向导图标 | `SetupIconFile=peel.ico` |
+| 卸载列表图标 | `UninstallDisplayIcon={app}\peel.ico` |
+
+### 12.2 为何「永远是 Python 默认标」
+
+1. **图标缓存**：装过旧版/旧快捷方式后，桌面仍显示缓存（常见黄蓝 Python 标）  
+2. **快捷方式未绑独立 ico**：仅依赖 exe 内嵌资源时，Explorer 有时不更新  
+3. **ICO 只有 256 单尺寸**：小尺寸槽位缺失时，部分场景缩放/回落异常（应含 16/32/48/256 等）  
+4. **用户未重装新包**：仍在用旧 Setup 或旧桌面 `.lnk`
+
+### 12.3 用户侧操作清单（写进发行说明亦可）
+
+1. 结束所有 `Peel.exe`  
+2. 卸载旧 Peel；**删除桌面旧快捷方式**  
+3. 运行**最新** `Peel-Setup-*.exe`，勾选「创建桌面快捷方式」  
+4. 确认安装目录存在 `Peel.exe` 与 **`peel.ico`**  
+5. 若仍是旧图标，**清 Windows 图标缓存**后刷新桌面（管理员 PowerShell）：
+
+```powershell
+taskkill /f /im explorer.exe
+Remove-Item "$env:LOCALAPPDATA\IconCache.db" -Force -ErrorAction SilentlyContinue
+Remove-Item "$env:LOCALAPPDATA\Microsoft\Windows\Explorer\iconcache*" -Force -ErrorAction SilentlyContinue
+Start-Process explorer.exe
+```
+
+必要时注销或重启一次。
+
+### 12.4 开发侧自检
+
+```text
+# 从 exe 抽图标应能看到产品图（非 Python 标）
+# 安装目录 {app}\peel.ico 存在
+# 右键桌面快捷方式 → 属性 → 更改图标 → 应列出产品图
+```
+
+### 12.5 与「选安装路径」安装包的关系
+
+- Inno：`DisableDirPage=no`，用户可选目录  
+- 默认任务「桌面图标」建议 `Flags: checkedonce`（默认勾选一次）  
+- 大体积 onedir 用 `Compression=lzma2`；排除 `*.part` 半成品模型  
+
+---
+
+## 13. 注意事项：模型下载与镜像（产品话术）
+
+- 模型官方 URL 在 **GitHub Releases**（rembg）；应用内 **镜像优先、直连兜底**  
+- **不能保证**所有无加速器用户都「秒下」；第三方镜像可能挂  
+- 长期可控方案：自建 **OSS + CDN**；Gitee 仅适合过渡，不宜当大文件主站  
+- 详见代码 `app/engines/local_rembg.py` 中 `_mirror_urls`
 
 ---
 

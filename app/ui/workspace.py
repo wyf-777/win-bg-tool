@@ -571,15 +571,17 @@ class Lightbox(QWidget):
         top.addStretch(1)
         lay.addLayout(top, 0)
 
+        from app.ui.button_fx import BUTTON_H
+
         mid = QHBoxLayout()
         mid.setSpacing(4)
         self.btn_prev = QPushButton("←")
         self.btn_prev.setObjectName("LightboxNavBtn")
-        self.btn_prev.setFixedSize(40, 40)
+        self.btn_prev.setFixedSize(BUTTON_H, BUTTON_H)
         self.btn_prev.clicked.connect(lambda: self.changed.emit(-1))
         self.btn_next = QPushButton("→")
         self.btn_next.setObjectName("LightboxNavBtn")
-        self.btn_next.setFixedSize(40, 40)
+        self.btn_next.setFixedSize(BUTTON_H, BUTTON_H)
         self.btn_next.clicked.connect(lambda: self.changed.emit(1))
         # FitPixmapLabel: sizeHint ignores pixmap so chrome stays below the image
         self.preview = FitPixmapLabel()

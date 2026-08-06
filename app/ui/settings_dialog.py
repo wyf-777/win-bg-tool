@@ -4,7 +4,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Signal, Qt
+from PySide6.QtCore import (
+    QAbstractAnimation,
+    QEasingCurve,
+    QEvent,
+    QPropertyAnimation,
+    Qt,
+    Signal,
+)
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -46,8 +53,13 @@ from app.services.hotkeys import (
     reset_hotkeys,
     set_hotkey,
 )
+from app.ui.button_fx import (
+    BUTTON_H,
+    apply_soft_button_shadow,
+    polish_button_tree,
+)
 from app.ui.key_capture import KeyCaptureButton
-from app.ui.widgets import SlideBackButton
+
 from app.services.folder_watch import (
     DEFAULT_ARCHIVE_SUBDIR,
     DEFAULT_FAIL_SUBDIR,
@@ -91,6 +103,183 @@ from app.services.settings import (
 __all__ = ["SettingsPage", "SettingsDialog"]
 
 
+# FAQ accordion seed content (问题 1–3; extend later)
+_FAQ_ITEMS: tuple[tuple[str, str], ...] = (
+    (
+        "如何更换抠图模型？",
+        "打开「模型选择」，在下拉框中预览各模型说明；选中后点「应用为默认」。"
+        "若本地没有该模型，会先确认再下载。下载过程可中断，未完成文件可续传或清理。",
+    ),
+    (
+        "文件夹监视怎么用？",
+        "在「文件夹」页选择监视目录与输出目录，点「应用」开启。"
+        "之后把图片放进监视文件夹，会自动抠图并保存到输出目录，不占用主界面列表。",
+    ),
+    (
+        "为什么第一次点设置会稍顿一下？",
+        "设置页在后台已建好，但首次显示时才做完整布局与绘制，并同步模型目录状态。"
+        "应用会在空闲时预热缓存；第二次打开通常会更顺。",
+    ),
+)
+
+_CHEVRON_COLLAPSED = "›"
+_CHEVRON_EXPANDED = "˅"
+# Smooth expand / collapse (ms)
+_FAQ_ANIM_MS = 260
+
+
+class _FaqAccordionItem(QFrame):
+    """
+    Accordion row matching 手风琴.png:
+      [ question text .............. › ]
+      [ answer body when expanded      ]
+
+    Body height animates with InOutCubic — no hard show/hide pop.
+    """
+
+    expanded_changed = Signal(object)  # emits self when user expands
+
+    def __init__(self, index: int, title: str, body: str, parent=None) -> None:
+        super().__init__(parent)
+        self.setObjectName("FaqAccordionItem")
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self._index = index
+        self._title = title
+        self._expanded = False
+
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(0)
+
+        # Clickable header row: title left, chevron right
+        self.header = QFrame()
+        self.header.setObjectName("FaqAccordionHeader")
+        self.header.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.header.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.header.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
+        h_l = QHBoxLayout(self.header)
+        h_l.setContentsMargins(14, 12, 14, 12)
+        h_l.setSpacing(10)
+
+        self.title_lab = QLabel(title)
+        self.title_lab.setObjectName("FaqAccordionTitle")
+        self.title_lab.setWordWrap(True)
+        self.title_lab.setAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
+        h_l.addWidget(self.title_lab, 1)
+
+        self.chevron = QLabel(_CHEVRON_COLLAPSED)
+        self.chevron.setObjectName("FaqAccordionChevron")
+        self.chevron.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        self.chevron.setFixedWidth(18)
+        h_l.addWidget(self.chevron, 0)
+        lay.addWidget(self.header)
+
+        # Clip host: always in layout; height driven by maxHeight animation
+        self.body_host = QFrame()
+        self.body_host.setObjectName("FaqAccordionBody")
+        self.body_host.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.body_host.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
+        self.body_host.setMinimumHeight(0)
+        self.body_host.setMaximumHeight(0)
+        body_l = QVBoxLayout(self.body_host)
+        body_l.setContentsMargins(14, 0, 14, 12)
+        body_l.setSpacing(0)
+        self.body_label = QLabel(body)
+        self.body_label.setObjectName("FaqAccordionBodyText")
+        self.body_label.setWordWrap(True)
+        self.body_label.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        body_l.addWidget(self.body_label)
+        lay.addWidget(self.body_host)
+
+        self._anim = QPropertyAnimation(self.body_host, b"maximumHeight", self)
+        self._anim.setDuration(_FAQ_ANIM_MS)
+        self._anim.setEasingCurve(QEasingCurve.Type.InOutCubic)
+        self._anim.finished.connect(self._on_anim_finished)
+
+        self.header.installEventFilter(self)
+
+    def eventFilter(self, obj, event) -> bool:  # noqa: N802
+        if obj is self.header and event.type() == QEvent.Type.MouseButtonRelease:
+            if event.button() == Qt.MouseButton.LeftButton:  # type: ignore[attr-defined]
+                self.set_expanded(not self._expanded, notify=True)
+                return True
+        return super().eventFilter(obj, event)
+
+    def is_expanded(self) -> bool:
+        return self._expanded
+
+    def _body_target_height(self) -> int:
+        """Natural height of answer block at current width."""
+        w = self.body_host.width()
+        if w < 40:
+            w = self.width() if self.width() > 40 else 320
+        inner = max(80, w - 28)  # horizontal margins 14+14
+        self.body_label.setFixedWidth(inner)
+        text_h = self.body_label.heightForWidth(inner)
+        if text_h < 0:
+            text_h = self.body_label.sizeHint().height()
+        return int(text_h) + 12  # bottom padding
+
+    def set_expanded(
+        self, expanded: bool, *, notify: bool = False, animate: bool = True
+    ) -> None:
+        expanded = bool(expanded)
+        running = self._anim.state() == QAbstractAnimation.State.Running
+        if self._expanded == expanded and not running:
+            self._sync_chevron()
+            return
+
+        was = self._expanded
+        self._expanded = expanded
+        self._sync_chevron()
+
+        target = self._body_target_height() if expanded else 0
+        # Current visual height
+        cur = self.body_host.maximumHeight()
+        if cur > 100_000:  # was "unlimited"
+            cur = self.body_host.height()
+        if running:
+            cur = int(self._anim.currentValue() or cur)
+
+        if not animate or abs(cur - target) < 2:
+            self._anim.stop()
+            self.body_host.setMaximumHeight(target if expanded else 0)
+            if not expanded:
+                self.body_host.setMaximumHeight(0)
+            if notify and expanded and not was:
+                self.expanded_changed.emit(self)
+            return
+
+        self._anim.stop()
+        self._anim.setStartValue(max(0, int(cur)))
+        self._anim.setEndValue(int(target))
+        self._anim.start()
+        if notify and expanded and not was:
+            self.expanded_changed.emit(self)
+
+    def _on_anim_finished(self) -> None:
+        if self._expanded:
+            # Allow natural growth if width changes while open
+            self.body_host.setMaximumHeight(self._body_target_height() + 8)
+        else:
+            self.body_host.setMaximumHeight(0)
+
+    def _sync_chevron(self) -> None:
+        self.chevron.setText(
+            _CHEVRON_EXPANDED if self._expanded else _CHEVRON_COLLAPSED
+        )
+
+
 class SettingsPage(QWidget):
     """
     Full-window settings panel (fills parent).
@@ -126,19 +315,8 @@ class SettingsPage(QWidget):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        # ── Top bar ────────────────────────────────────────
-        top = QFrame()
-        top.setObjectName("SettingsTopBar")
-        top_l = QHBoxLayout(top)
-        top_l.setContentsMargins(16, 12, 16, 12)
-        top_l.setSpacing(12)
-
-        self.btn_back = SlideBackButton()
-        self.btn_back.clicked.connect(self.back_requested.emit)
-
-        top_l.addWidget(self.btn_back)
-        top_l.addStretch(1)
-        root.addWidget(top)
+        # No in-page back bar — title-bar settings slot becomes SlideBackButton.
+        # back_requested kept for compatibility (main window uses title-bar back).
 
         # ── Body: nav | detail ─────────────────────────────
         body = QHBoxLayout()
@@ -151,7 +329,7 @@ class SettingsPage(QWidget):
         self.nav.setSpacing(2)
         # Prevent accidental empty selection (row -1) which can confuse navigation
         self.nav.setSelectionMode(QListWidget.SelectionMode.SingleSelection)
-        for name in ("外观", "模型选择", "导出", "文件夹", "快捷键"):
+        for name in ("外观", "模型选择", "导出", "文件夹", "快捷键", "问题"):
             item = QListWidgetItem(name)
             item.setTextAlignment(
                 Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft
@@ -168,6 +346,7 @@ class SettingsPage(QWidget):
         self.stack.addWidget(self._build_export_page())
         self.stack.addWidget(self._build_watch_page())
         self.stack.addWidget(self._build_hotkeys_page())
+        self.stack.addWidget(self._build_faq_page())
         body.addWidget(self.stack, 1)
 
         body_host = QWidget()
@@ -176,32 +355,51 @@ class SettingsPage(QWidget):
 
         self._refresh_model_help()
         self._update_custom_ext_visible()
+        # Soft shadow / polish after all pages built (incl. PrimaryBtn 应用 / 恢复默认)
+        polish_button_tree(self)
 
     def showEvent(self, event) -> None:  # noqa: N802
         super().showEvent(event)
+        # Critical: do not block the frame that switches into settings.
+        # Stack paint first; fill fields on the next event-loop turn.
+        if getattr(self, "_sync_pending", False):
+            return
+        self._sync_pending = True
+        from PySide6.QtCore import QTimer
+
+        QTimer.singleShot(0, self._run_deferred_sync)
+
+    def _run_deferred_sync(self) -> None:
+        self._sync_pending = False
+        if not self.isVisible():
+            return
         self._sync_from_settings()
 
+    def warm_idle_caches(self) -> None:
+        """
+        Lightweight idle pre-fill only (no grab / full layout storm).
+
+        - models dir listing
+        - ONNX accel probe (once per process)
+        """
+        try:
+            self._model_disk_snapshot(force=True)
+            if self._accel_status_cache is None:
+                self._accel_status_cache = detect_accel()
+        except Exception:
+            pass
+
     def _sync_from_settings(self) -> None:
+        """Pull QSettings + model disk status into widgets (runs deferred)."""
+        # ── Light: local QSettings only ───────────────────
         idx = max(0, self.theme_combo.findData(get_theme()))
         self.theme_combo.blockSignals(True)
         self.theme_combo.setCurrentIndex(idx)
         self.theme_combo.blockSignals(False)
 
-        self._invalidate_model_disk_cache()
-        self._cached_applied_model = get_model()
-        self._refresh_model_combo_labels(force_disk=True)
-        midx = max(0, self.model_combo.findData(self._cached_applied_model))
-        self.model_combo.blockSignals(True)
-        if self.model_combo.currentIndex() != midx:
-            self.model_combo.setCurrentIndex(midx)
-        self.model_combo.blockSignals(False)
-        self._refresh_model_help(force_disk=False)
-
         self.chk_alpha.blockSignals(True)
         self.chk_alpha.setChecked(get_alpha_matting())
         self.chk_alpha.blockSignals(False)
-
-        self._refresh_accel_ui()
 
         fidx = max(0, self.format_combo.findData(get_export_format()))
         self.format_combo.blockSignals(True)
@@ -222,7 +420,39 @@ class SettingsPage(QWidget):
         self._sync_prefix_enabled_ui()
 
         self._sync_watch_fields()
+
+        # ── Heavier: model dir + combo relabel + accel + hotkeys ──
+        # Prefer warm cache for first paint-adjacent refresh; still rescan
+        # when cache missing so labels stay correct after downloads.
+        had_cache = self._model_disk_cache is not None
+        self._cached_applied_model = get_model()
+        self._refresh_model_combo_labels(force_disk=not had_cache)
+        midx = max(0, self.model_combo.findData(self._cached_applied_model))
+        self.model_combo.blockSignals(True)
+        if self.model_combo.currentIndex() != midx:
+            self.model_combo.setCurrentIndex(midx)
+        self.model_combo.blockSignals(False)
+        self._refresh_model_help(force_disk=False)
+
+        self._refresh_accel_ui()
         self._refresh_hotkey_buttons()
+
+        # Background refresh of disk snapshot so next open is warm + current
+        if had_cache:
+            from PySide6.QtCore import QTimer
+
+            QTimer.singleShot(0, self._refresh_model_disk_in_background)
+
+    def _refresh_model_disk_in_background(self) -> None:
+        """Rescan models dir after UI is already showing (non-blocking feel)."""
+        if not self.isVisible():
+            return
+        try:
+            self._invalidate_model_disk_cache()
+            self._refresh_model_combo_labels(force_disk=True)
+            self._refresh_model_help(force_disk=False)
+        except Exception:
+            pass
 
     def _on_nav(self, row: int) -> None:
         if row < 0:
@@ -327,31 +557,34 @@ class SettingsPage(QWidget):
         )
         lay.addWidget(self.model_dl_hint)
 
-        # 与监视页操作行一致：等高 36、三格等分；Fixed 高度避免改文案时整页重排
+        # 三格等分、可收缩，避免窄栏 + 长文案（如「下载并应用」）溢出
         action_row = QHBoxLayout()
-        action_row.setSpacing(10)
-        action_row.setContentsMargins(0, 0, 0, 0)
+        action_row.setSpacing(8)
+        action_row.setContentsMargins(0, 0, 4, 4)
 
-        self.btn_apply_model = QPushButton("应用为默认")
-        self.btn_apply_model.setObjectName("PrimaryBtn")
-        self.btn_apply_model.setToolTip(
+        self.btn_apply_model = self._settings_btn(
+            "应用为默认",
             "把当前下拉选中的模型设为默认。"
-            "若本地没有文件，会先弹出确认再下载。"
+            "若本地没有文件，会先弹出确认再下载。",
+            min_width=0,
+            expanding=True,
         )
         self.btn_apply_model.clicked.connect(self._on_apply_or_download_model)
 
-        self.btn_uninstall_model = QPushButton("卸载本地")
-        self.btn_uninstall_model.setObjectName("ActionBtn")
-        self.btn_uninstall_model.setToolTip(
+        self.btn_uninstall_model = self._settings_btn(
+            "卸载本地",
             "删除该模型在 models 目录下的 .onnx（及未完成 .part），释放磁盘空间。"
-            "若正在使用该模型，会自动改用其它已下载模型。"
+            "若正在使用该模型，会自动改用其它已下载模型。",
+            min_width=0,
+            expanding=True,
         )
         self.btn_uninstall_model.clicked.connect(self._on_uninstall_model)
 
-        self.btn_clear_partial = QPushButton("清理未完成")
-        self.btn_clear_partial.setObjectName("ActionBtn")
-        self.btn_clear_partial.setToolTip(
-            "删除 models 目录里所有 .part 半成品，下次将从头下载"
+        self.btn_clear_partial = self._settings_btn(
+            "清理未完成",
+            "删除 models 目录里所有 .part 半成品，下次将从头下载",
+            min_width=0,
+            expanding=True,
         )
         self.btn_clear_partial.clicked.connect(self._on_clear_partial_downloads)
 
@@ -360,12 +593,6 @@ class SettingsPage(QWidget):
             self.btn_uninstall_model,
             self.btn_clear_partial,
         ):
-            btn.setFixedHeight(36)
-            btn.setMinimumWidth(100)
-            # Expanding 宽度等分；高度固定，避免 setText 触发整页 layout 抖动
-            btn.setSizePolicy(
-                QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
-            )
             action_row.addWidget(btn, 1)
 
         lay.addLayout(action_row)
@@ -436,11 +663,86 @@ class SettingsPage(QWidget):
         lab.setObjectName("SettingsFieldLabel")
         return lab
 
+    # Path / footer chips: height = same page「清空队列」(BUTTON_H); width custom
+    _PATH_SIDE_W = 96
+    _FOOTER_BTN_W = 112
+    _HOTKEY_CHIP_W = 132
+
+    def _settings_ui_font(self):
+        """Font matching theme (13px, weight 600)."""
+        from PySide6.QtGui import QFont
+
+        font = QFont("Microsoft YaHei UI")
+        font.setPixelSize(13)
+        font.setWeight(QFont.Weight.DemiBold)
+        return font
+
+    def _label_chip_width(self, *labels: str, min_w: int = 72) -> int:
+        """Min content width for expanding action buttons."""
+        from PySide6.QtGui import QFontMetrics
+
+        fm = QFontMetrics(self._settings_ui_font())
+        text_w = 0
+        for t in labels:
+            text_w = max(
+                text_w,
+                fm.horizontalAdvance(t),
+                fm.boundingRect(t).width(),
+            )
+        return max(min_w, int(text_w) + 16 * 2 + 2 + 12)
+
+    def _settings_btn(
+        self,
+        text: str,
+        tooltip: str = "",
+        *,
+        min_width: int = 0,
+        fixed_width: int = 0,
+        expanding: bool = False,
+        height: int | None = None,
+        object_name: str = "SettingsCtrlBtn",
+    ) -> QPushButton:
+        """
+        Settings control button. Prefer object_name styles for fixed chips
+        (global QPushButton max-height/min-width would otherwise clip CJK).
+        """
+        btn = QPushButton(text)
+        btn.setObjectName(object_name)
+        btn.setFont(self._settings_ui_font())
+        h = BUTTON_H if height is None else height
+        btn.setFixedHeight(h)
+        if fixed_width > 0:
+            btn.setFixedWidth(fixed_width)
+            btn.setSizePolicy(
+                QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed
+            )
+        elif expanding:
+            need = self._label_chip_width(text, min_w=min_width)
+            btn.setMinimumWidth(max(0, need))
+            btn.setSizePolicy(
+                QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+            )
+        else:
+            need = self._label_chip_width(text, min_w=min_width)
+            btn.setMinimumWidth(max(0, need))
+            btn.setSizePolicy(
+                QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed
+            )
+        btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        apply_soft_button_shadow(btn)
+        if tooltip:
+            btn.setToolTip(tooltip)
+        return btn
+
     def _watch_path_edit(self, placeholder: str) -> QLineEdit:
         edit = QLineEdit()
+        edit.setObjectName("SettingsPathEdit")
         edit.setPlaceholderText(placeholder)
         edit.setReadOnly(True)
-        edit.setMinimumHeight(36)
+        edit.setFrame(False)
+        # Same height as「清空队列」/ path-side chips
+        edit.setFixedHeight(BUTTON_H)
         edit.setMinimumWidth(180)
         edit.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
@@ -448,15 +750,31 @@ class SettingsPage(QWidget):
         edit.setClearButtonEnabled(False)
         return edit
 
+    def _path_side_btn(self, text: str, tooltip: str = "") -> QPushButton:
+        """浏览 / 用默认 — custom width, height = 清空队列 (BUTTON_H)."""
+        return self._settings_btn(
+            text,
+            tooltip,
+            fixed_width=self._PATH_SIDE_W,
+            height=BUTTON_H,
+            object_name="SettingsPathSideBtn",
+        )
+
     def _watch_action_btn(self, text: str, tooltip: str = "") -> QPushButton:
-        btn = QPushButton(text)
-        btn.setObjectName("ActionBtn")
-        btn.setMinimumWidth(88)
-        btn.setMinimumHeight(36)
-        btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
-        if tooltip:
-            btn.setToolTip(tooltip)
-        return btn
+        return self._settings_btn(text, tooltip, min_width=0)
+
+    def _primary_action_btn(
+        self, text: str, tooltip: str = "", *, width: int | None = None
+    ) -> QPushButton:
+        """应用 / 关闭应用 / 恢复默认 — custom width, height = 清空队列."""
+        w = self._FOOTER_BTN_W if width is None else width
+        return self._settings_btn(
+            text,
+            tooltip,
+            fixed_width=w,
+            height=BUTTON_H,
+            object_name="SettingsFooterBtn",
+        )
 
     def _set_path_edit_text(self, edit: QLineEdit, text: str) -> None:
         """Set path text and keep caret at start so long paths aren't only showing the tail."""
@@ -486,29 +804,32 @@ class SettingsPage(QWidget):
         # ── Paths ─────────────────────────────────────────
         lay.addWidget(self._watch_field_label("监视文件夹（进图 / 导入）"))
         row_w = QHBoxLayout()
-        row_w.setSpacing(10)
+        row_w.setSpacing(8)
+        # Room for side-chip soft shadows (same idea as apply / 恢复默认 rows)
+        row_w.setContentsMargins(0, 2, 4, 4)
         self.edit_watch_dir = self._watch_path_edit("选择要监视的文件夹…")
-        btn_w = self._watch_action_btn("浏览…", "选择监视文件夹")
+        btn_w = self._path_side_btn("浏览", "选择监视文件夹")
         btn_w.clicked.connect(self._browse_watch_dir)
         row_w.addWidget(self.edit_watch_dir, 1)
-        row_w.addWidget(btn_w, 0)
+        row_w.addWidget(btn_w, 0, Qt.AlignmentFlag.AlignVCenter)
         lay.addLayout(row_w)
 
         lay.addWidget(self._watch_field_label("输出文件夹（结果）"))
         row_o = QHBoxLayout()
-        row_o.setSpacing(10)
+        row_o.setSpacing(8)
+        row_o.setContentsMargins(0, 2, 4, 4)
         self.edit_watch_output = self._watch_path_edit(
             f"默认：监视文件夹下的「{DEFAULT_OUTPUT_SUBDIR}」"
         )
-        btn_o = self._watch_action_btn("浏览…", "选择输出文件夹")
+        btn_o = self._path_side_btn("浏览", "选择输出文件夹")
         btn_o.clicked.connect(self._browse_watch_output)
-        btn_o_clear = self._watch_action_btn(
+        btn_o_clear = self._path_side_btn(
             "用默认", f"恢复为 监视目录/{DEFAULT_OUTPUT_SUBDIR}"
         )
         btn_o_clear.clicked.connect(self._clear_watch_output)
         row_o.addWidget(self.edit_watch_output, 1)
-        row_o.addWidget(btn_o, 0)
-        row_o.addWidget(btn_o_clear, 0)
+        row_o.addWidget(btn_o, 0, Qt.AlignmentFlag.AlignVCenter)
+        row_o.addWidget(btn_o_clear, 0, Qt.AlignmentFlag.AlignVCenter)
         lay.addLayout(row_o)
 
         # ── Options ───────────────────────────────────────
@@ -575,58 +896,81 @@ class SettingsPage(QWidget):
         )
         lay.addWidget(self.watch_status)
 
-        # ── Runtime controls: two rows so buttons don't crush ─
+        # ── Runtime controls: two equal-share rows (shrink-safe) ─
         lay.addWidget(self._watch_field_label("操作"))
         run1 = QHBoxLayout()
-        run1.setSpacing(10)
-        self.btn_watch_pause = self._watch_action_btn(
-            "暂停", "暂停接收与处理（正在抠的一张会跑完）"
+        run1.setSpacing(8)
+        run1.setContentsMargins(0, 0, 4, 0)
+        # Equal columns; min width from longest label so text never clips
+        _op_min = self._label_chip_width(
+            "暂停", "继续", "清空队列", "重试失败",
+            "打开导入", "打开输出", "打开失败",
+            min_w=72,
+        )
+        self.btn_watch_pause = self._settings_btn(
+            "暂停",
+            "暂停接收与处理（正在抠的一张会跑完）",
+            min_width=_op_min,
+            expanding=True,
         )
         self.btn_watch_pause.clicked.connect(self._on_watch_pause_clicked)
-        self.btn_watch_clear = self._watch_action_btn(
-            "清空队列", "清空等待中的文件（不中断当前这一张）"
+        self.btn_watch_clear = self._settings_btn(
+            "清空队列",
+            "清空等待中的文件（不中断当前这一张）",
+            min_width=_op_min,
+            expanding=True,
         )
         self.btn_watch_clear.clicked.connect(self._on_watch_clear_clicked)
-        self.btn_watch_retry = self._watch_action_btn(
-            "重试失败", "把最近失败且源文件仍在的项目重新排队"
+        self.btn_watch_retry = self._settings_btn(
+            "重试失败",
+            "把最近失败且源文件仍在的项目重新排队",
+            min_width=_op_min,
+            expanding=True,
         )
         self.btn_watch_retry.clicked.connect(lambda: self.watch_retry_failed.emit())
-        run1.addWidget(self.btn_watch_pause)
-        run1.addWidget(self.btn_watch_clear)
-        run1.addWidget(self.btn_watch_retry)
-        run1.addStretch(1)
+        run1.addWidget(self.btn_watch_pause, 1)
+        run1.addWidget(self.btn_watch_clear, 1)
+        run1.addWidget(self.btn_watch_retry, 1)
         lay.addLayout(run1)
 
         run2 = QHBoxLayout()
-        run2.setSpacing(10)
-        self.btn_watch_open_in = self._watch_action_btn(
-            "打开导入", "打开监视/导入文件夹（往这里放待抠图）"
+        run2.setSpacing(8)
+        run2.setContentsMargins(0, 0, 4, 0)
+        self.btn_watch_open_in = self._settings_btn(
+            "打开导入",
+            "打开监视/导入文件夹（往这里放待抠图）",
+            min_width=_op_min,
+            expanding=True,
         )
         self.btn_watch_open_in.clicked.connect(self._on_watch_open_input)
-        self.btn_watch_open_out = self._watch_action_btn(
-            "打开输出", "打开输出文件夹（抠图结果）"
+        self.btn_watch_open_out = self._settings_btn(
+            "打开输出",
+            "打开输出文件夹（抠图结果）",
+            min_width=_op_min,
+            expanding=True,
         )
         self.btn_watch_open_out.clicked.connect(self._on_watch_open_output)
-        self.btn_watch_open_fail = self._watch_action_btn(
-            "打开失败", "打开失败目录（错误说明 + 源文件副本）"
+        self.btn_watch_open_fail = self._settings_btn(
+            "打开失败",
+            "打开失败目录（错误说明 + 源文件副本）",
+            min_width=_op_min,
+            expanding=True,
         )
         self.btn_watch_open_fail.clicked.connect(self._on_watch_open_fail)
-        run2.addWidget(self.btn_watch_open_in)
-        run2.addWidget(self.btn_watch_open_out)
-        run2.addWidget(self.btn_watch_open_fail)
-        run2.addStretch(1)
+        run2.addWidget(self.btn_watch_open_in, 1)
+        run2.addWidget(self.btn_watch_open_out, 1)
+        run2.addWidget(self.btn_watch_open_fail, 1)
         lay.addLayout(run2)
 
         # ── Apply / close ─────────────────────────────────
         apply_row = QHBoxLayout()
-        apply_row.setContentsMargins(0, 8, 0, 0)
+        # Extra margin so soft drop-shadow is not clipped by scroll viewport
+        apply_row.setContentsMargins(0, 8, 4, 10)
         apply_row.addStretch(1)
         self._watch_apply_running = False
-        self.btn_watch_apply = QPushButton("应用")
-        self.btn_watch_apply.setObjectName("PrimaryBtn")
-        self.btn_watch_apply.setMinimumWidth(120)
-        self.btn_watch_apply.setMinimumHeight(36)
-        self.btn_watch_apply.setToolTip("保存设置并开启文件夹监视")
+        self.btn_watch_apply = self._primary_action_btn(
+            "应用", "保存设置并开启文件夹监视"
+        )
         self.btn_watch_apply.clicked.connect(self._on_watch_apply)
         apply_row.addWidget(self.btn_watch_apply)
         lay.addLayout(apply_row)
@@ -906,14 +1250,12 @@ class SettingsPage(QWidget):
 
         # ── Reset between keyboard bindings and mouse section ──
         reset_row = QHBoxLayout()
-        reset_row.setContentsMargins(0, 4, 0, 4)
+        # Extra margin so soft drop-shadow is not clipped by scroll viewport
+        reset_row.setContentsMargins(0, 6, 4, 10)
         reset_row.addStretch(1)
-        self.btn_reset_hotkeys = QPushButton("恢复默认")
-        self.btn_reset_hotkeys.setObjectName("PrimaryBtn")
-        self.btn_reset_hotkeys.setMinimumWidth(120)
-        self.btn_reset_hotkeys.setMinimumHeight(36)
-        self.btn_reset_hotkeys.setToolTip(
-            "将全部可自定义快捷键还原为默认（鼠标操作不变）"
+        self.btn_reset_hotkeys = self._primary_action_btn(
+            "恢复默认",
+            "将全部可自定义快捷键还原为默认（鼠标操作不变）",
         )
         self.btn_reset_hotkeys.clicked.connect(self._on_reset_hotkeys)
         reset_row.addWidget(self.btn_reset_hotkeys)
@@ -962,6 +1304,45 @@ class SettingsPage(QWidget):
 
         return self._wrap_page(block)
 
+    def _build_faq_page(self) -> QWidget:
+        """
+        常见问题 — list rows with right › / ˅, height-animated body.
+        No panel background / border frame around the block.
+        """
+        list_host = QWidget()
+        list_host.setObjectName("FaqListHost")
+        list_l = QVBoxLayout(list_host)
+        list_l.setContentsMargins(0, 0, 0, 0)
+        list_l.setSpacing(0)
+
+        self._faq_items: list[_FaqAccordionItem] = []
+        for i, (q, a) in enumerate(_FAQ_ITEMS, start=1):
+            item = _FaqAccordionItem(i, q, a)
+            item.expanded_changed.connect(self._on_faq_item_expanded)
+            self._faq_items.append(item)
+            list_l.addWidget(item)
+        list_l.addStretch(1)
+
+        scroll = QScrollArea()
+        scroll.setObjectName("FaqListScroll")
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAlwaysOff
+        )
+        scroll.setVerticalScrollBarPolicy(
+            Qt.ScrollBarPolicy.ScrollBarAsNeeded
+        )
+        scroll.setWidget(list_host)
+        scroll.setMinimumHeight(280)
+        return self._wrap_page(scroll)
+
+    def _on_faq_item_expanded(self, opened: _FaqAccordionItem) -> None:
+        """Accordion: only one section open; others animate closed."""
+        for item in getattr(self, "_faq_items", []):
+            if item is not opened and item.is_expanded():
+                item.set_expanded(False, notify=False, animate=True)
+
     def _make_h_line(self) -> QFrame:
         line = QFrame()
         line.setObjectName("HotkeySeparator")
@@ -997,7 +1378,7 @@ class SettingsPage(QWidget):
             title_col.addWidget(hint)
 
         btn = KeyCaptureButton()
-        btn.setFixedWidth(132)
+        btn.setFixedWidth(self._HOTKEY_CHIP_W)
         btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         btn.set_sequence(get_hotkey(aid))
         btn.setToolTip(f"{action_label(aid)}：点击后按下新快捷键")
@@ -1036,13 +1417,17 @@ class SettingsPage(QWidget):
             hint.setWordWrap(True)
             title_col.addWidget(hint)
 
+        # Look like KeyCaptureBtn (incl. soft shadow) but not interactive
         badge = QLabel(gesture)
         badge.setObjectName("HotkeyGestureBadge")
-        badge.setFixedWidth(132)
-        badge.setMinimumHeight(32)
+        badge.setFixedWidth(self._HOTKEY_CHIP_W)
+        badge.setFixedHeight(BUTTON_H)
         badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
         badge.setToolTip("鼠标操作，不可改绑为键盘")
         badge.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+        badge.setCursor(Qt.CursorShape.ArrowCursor)
+        badge.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        apply_soft_button_shadow(badge)
 
         row.addLayout(title_col, 1)
         row.addWidget(

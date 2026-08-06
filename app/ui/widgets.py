@@ -48,6 +48,8 @@ from PySide6.QtWidgets import (
 )
 import math
 
+from app.ui.button_fx import BUTTON_H, BUTTON_RADIUS, apply_soft_button_shadow
+
 
 # User-provided paintbrush glyph (viewBox 0 0 1024 1024); fill color injected at paint.
 _BRUSH_SVG_PATH = (
@@ -306,8 +308,8 @@ class _LineIcon(QWidget):
 
 class _CapsuleShell(QWidget):
     """
-    Self-painted fully-rounded capsule (pill).
-    QSS border-radius on QFrame is unreliable on Windows; paint guarantees round ends.
+    Self-painted soft rounded rect (same corner as 快捷键 KeyCaptureBtn).
+    QSS border-radius on QFrame is unreliable on Windows; paint is authoritative.
     """
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
@@ -324,7 +326,8 @@ class _CapsuleShell(QWidget):
         self._bg_hover = QColor("#fafafa")
         self._bg_pressed = QColor("#f0f0f2")
         self._bg_disabled = QColor("#f5f5f7")
-        self._border_hover = QColor("#34c759")
+        # Chrome-like edge lift on hover (not only primary accent)
+        self._border_hover = QColor("#d2d2d7")
         self._border_disabled = QColor("#d2d2d7")
         self._primary = QColor("#34c759")
 
@@ -353,7 +356,8 @@ class _CapsuleShell(QWidget):
         self._bg_hover = QColor(hover)
         self._bg_pressed = QColor(pressed)
         self._bg_disabled = QColor(disabled_bg)
-        self._border_hover = QColor(primary)
+        # Same interaction language as ☆ – □ × : stronger edge, not forced green
+        self._border_hover = QColor(border)
         self._border_disabled = QColor(border)
         self._primary = QColor(primary)
         self.update()
@@ -362,11 +366,12 @@ class _CapsuleShell(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing, True)
 
-        # Inset half-pixel so 1px stroke sits fully inside and stays round
+        # Inset half-pixel so 1px stroke sits fully inside
         r = self.rect().adjusted(1, 1, -1, -1)
         if r.width() < 2 or r.height() < 2:
             return
-        radius = r.height() / 2.0  # full pill ends — never square
+        # Match KeyCaptureBtn / SettingsCtrlBtn (not full-height pill)
+        radius = float(min(BUTTON_RADIUS, r.height() / 2.0, r.width() / 2.0))
 
         if self._fill_primary:
             base = QColor(self._primary)
@@ -386,8 +391,10 @@ class _CapsuleShell(QWidget):
         elif self._disabled:
             bg, border = self._bg_disabled, self._border_disabled
         elif self._pressed:
+            # Match title chrome: pressed fill, slightly stronger edge
             bg, border = self._bg_pressed, self._border
         elif self._hovered:
+            # Match title chrome: hover fill + edge lift (border_hover)
             bg, border = self._bg_hover, self._border_hover
         else:
             bg, border = self._bg, self._border
@@ -404,6 +411,8 @@ class _CapsuleShell(QWidget):
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(bg)
         p.drawPath(path)
+        # Flat fill only — no upper-half rim (that looked like a horizontal split:
+        # light top / dark bottom). Elevation comes from soft drop-shadow instead.
         pen = QPen(border)
         pen.setWidthF(1.0)
         pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
@@ -423,11 +432,11 @@ class SlideCapsuleButton(QFrame):
 
     clicked = Signal()
 
-    _BASE_H = 36
+    _BASE_H = BUTTON_H  # match title-bar ×
     _ICON = 16
     _SLIDE = 10
-    _PAD_X = 24
-    _GAP = 10
+    _PAD_X = 18
+    _GAP = 8
     _DUR_HOVER = 360
     _DUR_PRESS = 140
 
@@ -483,8 +492,10 @@ class SlideCapsuleButton(QFrame):
         self._cache_caption_width()
         base = self._base_size()
         self._host_w = int(round(base.width() * 1.06)) + 2
-        self._host_h = int(round(base.height() * 1.06)) + 2
+        # Height matches title × exactly (no vertical scale padding)
+        self._host_h = base.height()
         self.setFixedSize(self._host_w, self._host_h)
+        apply_soft_button_shadow(self)
         self._apply_layout()
 
     def apply_theme_colors(
@@ -676,7 +687,8 @@ class SlideCapsuleButton(QFrame):
         self._cache_caption_width()
         base = self._base_size()
         self._host_w = int(round(base.width() * 1.06)) + 2
-        self._host_h = int(round(base.height() * 1.06)) + 2
+        # Height matches title × exactly (no vertical scale padding)
+        self._host_h = base.height()
         self.setFixedSize(self._host_w, self._host_h)
         self._apply_layout()
 
@@ -696,17 +708,17 @@ class SlideSettingsButton(SlideCapsuleButton):
 
 class SlideBackButton(QFrame):
     """
-    Settings-page「返回」per text.md RotateButton:
+    Settings「返回」per text.md RotateButton (title-bar slot while settings open):
     fixed [settings gear][gap][返回]; hover rotates gear 180° + scale 1.02;
     press scale 0.96. Single QVariantAnimation, no graphics effects.
     """
 
     clicked = Signal()
 
-    _BASE_H = 36
+    _BASE_H = BUTTON_H
     _ICON = 16
-    _PAD_X = 24
-    _GAP = 10  # ml-2.5
+    _PAD_X = 18
+    _GAP = 8
     _DUR_HOVER = 380
     _DUR_PRESS = 140
 
@@ -761,8 +773,10 @@ class SlideBackButton(QFrame):
         self._cache_caption_width()
         base = self._base_size()
         self._host_w = int(round(base.width() * 1.06)) + 2
-        self._host_h = int(round(base.height() * 1.06)) + 2
+        # Height matches title × exactly (no vertical scale padding)
+        self._host_h = base.height()
         self.setFixedSize(self._host_w, self._host_h)
+        apply_soft_button_shadow(self)
         self._apply_layout()
 
     def apply_theme_colors(
@@ -948,9 +962,9 @@ class ShakeBackButton(QFrame):
 
     clicked = Signal()
 
-    _BASE_H = 36
-    _ICON = 18
-    _PAD_X = 22
+    _BASE_H = BUTTON_H
+    _ICON = 16
+    _PAD_X = 18
     _GAP = 8  # ml-2.5
     _DUR_SHAKE = 400  # text.md transition.duration 0.4
     _Y_KEYS = (0.0, -2.0, 0.0, -2.0, 0.0)
@@ -1006,8 +1020,10 @@ class ShakeBackButton(QFrame):
         self._cache_caption_width()
         base = self._base_size()
         self._host_w = int(round(base.width() * 1.06)) + 2
-        self._host_h = int(round(base.height() * 1.06)) + 2
+        # Height matches title × exactly (no vertical scale padding)
+        self._host_h = base.height()
         self.setFixedSize(self._host_w, self._host_h)
+        apply_soft_button_shadow(self)
         self._apply_layout()
 
     @staticmethod
@@ -1212,17 +1228,17 @@ class MagneticDoneButton(QFrame):
 
       animate x/y → mouseCoords while hovered, else 0
       whileTap scale 0.96  (no whileHover scale)
-      h-[36px] px-6 (24)  icon w-4 (16)  mr-2.5 (10)  text 13px
+      h matches title × (BUTTON_H); px + icon + text
       transition-colors duration-150
     """
 
     clicked = Signal()
 
-    # ── text.md layout constants ──────────────────────────
-    _BASE_H = 36          # h-[36px]
+    # ── layout constants (height = title-bar ×) ───────────
+    _BASE_H = BUTTON_H
     _ICON = 16            # w-4 h-4
-    _PAD_X = 24           # px-6
-    _GAP = 10             # mr-2.5
+    _PAD_X = 18
+    _GAP = 8
     _MAGNET = 0.35        # x * 0.35
     _TAP_SCALE = 0.96     # whileTap
     # framer-motion default spring-ish follow (no explicit transition in text.md)
@@ -1285,6 +1301,7 @@ class MagneticDoneButton(QFrame):
         self.setToolTip("应用修补并返回")
         self._cache_caption_width()
         self._rebuild_host_size()
+        apply_soft_button_shadow(self)
         self._apply_fg_colors()
         self._apply_layout()
 
@@ -1649,10 +1666,10 @@ class SlideOpenButton(QFrame):
 
     clicked = Signal()
 
-    _BASE_H = 36
+    _BASE_H = BUTTON_H
     _ICON = 16
-    _PAD_X = 24
-    _GAP = 10
+    _PAD_X = 18
+    _GAP = 8
     _DUR_HOVER = 360
     _DUR_PRESS = 140
 
@@ -1703,8 +1720,10 @@ class SlideOpenButton(QFrame):
         self._cache_caption_width()
         base = self._base_size()
         self._host_w = int(round(base.width() * 1.06)) + 2
-        self._host_h = int(round(base.height() * 1.06)) + 2
+        # Height matches title × exactly (no vertical scale padding)
+        self._host_h = base.height()
         self.setFixedSize(self._host_w, self._host_h)
+        apply_soft_button_shadow(self)
         self._apply_layout()
 
     def apply_theme_colors(
@@ -1890,10 +1909,10 @@ class SlideClearButton(QFrame):
 
     clicked = Signal()
 
-    _BASE_H = 36
+    _BASE_H = BUTTON_H
     _ICON = 16
-    _PAD_X = 24  # px-6
-    _GAP = 10  # ml-2.5
+    _PAD_X = 18
+    _GAP = 8
     _DUR_SWEEP = 720  # one full broom cycle
     _DUR_PRESS = 140
 
@@ -1946,8 +1965,10 @@ class SlideClearButton(QFrame):
         self._cache_caption_width()
         base = self._base_size()
         self._host_w = int(round(base.width() * 1.06)) + 2
-        self._host_h = int(round(base.height() * 1.06)) + 2
+        # Height matches title × exactly (no vertical scale padding)
+        self._host_h = base.height()
         self.setFixedSize(self._host_w, self._host_h)
+        apply_soft_button_shadow(self)
         self._apply_layout()
         self.setEnabled(False)
 
@@ -2009,7 +2030,8 @@ class SlideClearButton(QFrame):
         self._cache_caption_width()
         base = self._base_size()
         self._host_w = int(round(base.width() * 1.06)) + 2
-        self._host_h = int(round(base.height() * 1.06)) + 2
+        # Height matches title × exactly (no vertical scale padding)
+        self._host_h = base.height()
         self.setFixedSize(self._host_w, self._host_h)
         self._apply_layout()
 
@@ -2156,10 +2178,10 @@ class SlideRepairButton(QFrame):
 
     clicked = Signal()
 
-    _BASE_H = 36
-    # Filled SVG brush needs more pixels than line icons (16) to stay legible
-    _ICON = 22
-    _PAD_X = 22
+    _BASE_H = BUTTON_H
+    # Filled SVG brush — keep ≤ BUTTON_H for vertical fit
+    _ICON = 16
+    _PAD_X = 18
     _GAP = 8
     _DUR_SWEEP = 720
 
@@ -2212,8 +2234,10 @@ class SlideRepairButton(QFrame):
         self._cache_caption_width()
         base = self._base_size()
         self._host_w = int(round(base.width() * 1.06)) + 2
-        self._host_h = int(round(base.height() * 1.06)) + 2
+        # Height matches title × exactly (no vertical scale padding)
+        self._host_h = base.height()
         self.setFixedSize(self._host_w, self._host_h)
+        apply_soft_button_shadow(self)
         self._apply_layout()
         self.setEnabled(False)
 
@@ -2270,7 +2294,8 @@ class SlideRepairButton(QFrame):
         self._cache_caption_width()
         base = self._base_size()
         self._host_w = int(round(base.width() * 1.06)) + 2
-        self._host_h = int(round(base.height() * 1.06)) + 2
+        # Height matches title × exactly (no vertical scale padding)
+        self._host_h = base.height()
         self.setFixedSize(self._host_w, self._host_h)
         self._apply_layout()
 
@@ -2416,11 +2441,11 @@ class SlideExportButton(QFrame):
 
     clicked = Signal()
 
-    _BASE_H = 36
+    _BASE_H = BUTTON_H
     _ICON = 16
-    _PAD_X = 22
-    _GAP = 10
-    _TEXT_H = 18
+    _PAD_X = 18
+    _GAP = 8
+    _TEXT_H = 16
     _DUR_HOVER = 360
     _DUR_PRESS = 140
 
@@ -2487,8 +2512,10 @@ class SlideExportButton(QFrame):
         self._cache_caption_width()
         base = self._base_size()
         self._host_w = int(round(base.width() * 1.06)) + 2
-        self._host_h = int(round(base.height() * 1.06)) + 2
+        # Height matches title × exactly (no vertical scale padding)
+        self._host_h = base.height()
         self.setFixedSize(self._host_w, self._host_h)
+        apply_soft_button_shadow(self)
         self._apply_layout()
         self._sync_shell()
 
@@ -2535,7 +2562,8 @@ class SlideExportButton(QFrame):
         self._cache_caption_width()
         base = self._base_size()
         self._host_w = int(round(base.width() * 1.06)) + 2
-        self._host_h = int(round(base.height() * 1.06)) + 2
+        # Height matches title × exactly (no vertical scale padding)
+        self._host_h = base.height()
         self.setFixedSize(self._host_w, self._host_h)
         self._apply_layout()
 

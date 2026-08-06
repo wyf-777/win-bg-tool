@@ -6,6 +6,8 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QKeySequence, QKeyEvent, QFocusEvent, QMouseEvent
 from PySide6.QtWidgets import QPushButton
 
+from app.ui.button_fx import BUTTON_H, apply_soft_button_shadow
+
 
 class KeyCaptureButton(QPushButton):
     """
@@ -25,7 +27,8 @@ class KeyCaptureButton(QPushButton):
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setMinimumWidth(120)
-        self.setMinimumHeight(32)
+        self.setFixedHeight(BUTTON_H)
+        apply_soft_button_shadow(self)
         self._sequence = ""
         self._recording = False
         self.setToolTip("点击后按下想要的快捷键")
