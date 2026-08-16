@@ -1,0 +1,38 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Peel",
+  "version": "2.0.0",
+  "identifier": "com.peel.win-bg-tool",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Peel",
+        "width": 720,
+        "height": 720,
+        "minWidth": 480,
+        "minHeight": 480,
+        "decorations": false,
+        "shadow": false,
+        "resizable": true,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": ["icons/icon.ico"],
+    "resources": ["../models/u2netp.onnx"],
+    "createUpdaterArtifacts": false
+  }
+}
