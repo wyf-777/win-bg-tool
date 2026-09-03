@@ -10,7 +10,6 @@ models/*
 *.onnx
 *.onnx.part
 *.part
-!win-bg-tool-rust/models/*.onnx
 
 .DS_Store
 Thumbs.db
@@ -30,3 +29,6 @@ Peel-Setup-*.exe
 .vscode/
 _dbg_*.txt
 *.log
+
+# Rust/Tauri experimental subproject (kept locally, not published)
+win-bg-tool-rust/
