@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#111311" />
+    <meta
+      name="description"
+      content="Peel 是一款 Windows 本地图片去背景工具。拖入图片，自动识别主体，透明 PNG 直接导出。"
+    />
+    <title>Peel — Windows 本地去背景工具</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="site-shell">
+      <header class="site-nav" data-nav>
+        <a class="brand" href="#top" aria-label="Peel 首页">
+          <span class="brand-icon"><img src="../app/assets/peel_icon.png" alt="" /></span>
+          <span class="brand-copy">
+            <strong>Peel</strong>
+            <small>LOCAL CUTOUT</small>
+          </span>
+        </a>
+
+        <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="main-nav">
+          <span></span><span></span>
+          <span class="sr-only">打开导航</span>
+        </button>
+
+        <nav id="main-nav" class="main-nav" aria-label="主导航">
+          <a href="#features">能力</a>
+          <a href="#workflow">怎么用</a>
+          <a href="#details">技术细节</a>
+          <a class="github-link" href="https://github.com/wyf-777/win-bg-tool" target="_blank" rel="noreferrer" aria-label="在 GitHub 查看 Peel 源码">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .7a11.3 11.3 0 0 0-3.57 22.02c.57.1.78-.25.78-.55v-2.1c-3.18.69-3.85-1.34-3.85-1.34-.52-1.32-1.27-1.67-1.27-1.67-1.04-.71.08-.7.08-.7 1.15.08 1.75 1.18 1.75 1.18 1.02 1.75 2.67 1.25 3.32.96.1-.74.4-1.25.73-1.54-2.54-.29-5.21-1.27-5.21-5.66 0-1.25.45-2.27 1.18-3.07-.12-.29-.51-1.45.11-3.02 0 0 .96-.31 3.12 1.17a10.85 10.85 0 0 1 5.68 0c2.16-1.48 3.12-1.17 3.12-1.17.62 1.57.23 2.73.11 3.02.73.8 1.18 1.82 1.18 3.07 0 4.4-2.68 5.36-5.23 5.65.41.35.78 1.04.78 2.1v3.12c0 .3.2.66.79.55A11.3 11.3 0 0 0 12 .7Z" /></svg>
+            GitHub
+          </a>
+          <a class="nav-cta" href="https://github.com/wyf-777/win-bg-tool/releases/latest/download/Peel-Setup-1.0.0.exe">获取 Windows 版 <span>↓</span></a>
+        </nav>
+      </header>
+
+      <main>
+        <section class="hero section-pad" id="top">
+          <div class="hero-copy reveal">
+            <div class="eyebrow"><span class="eyebrow-dot"></span> Windows 本地图片去背景</div>
+            <h1>把背景去掉，<em>剩下主体。</em></h1>
+            <p class="hero-lead">
+              Peel 是一款轻巧、安静的桌面抠图工具。把图片拖进来，自动识别主体，透明 PNG 直接带走。
+            </p>
+            <div class="hero-actions">
+              <a class="button button-primary" href="https://github.com/wyf-777/win-bg-tool/releases/latest/download/Peel-Setup-1.0.0.exe">获取 Windows 版 <span>↓</span></a>
+              <a class="quiet-link" href="#workflow">先看看怎么用 <span>↓</span></a>
+            </div>
+            <div class="hero-note">
+              <span class="mini-check">✓</span>
+              <span>本机推理 · 不必把图片上传到网页</span>
+            </div>
+          </div>
+
+          <div class="hero-visual reveal reveal-delay-1" aria-label="Peel 应用界面预览">
+            <div class="visual-glow"></div>
+            <div class="app-window">
+              <div class="window-topbar">
+                <div class="window-brand">
+                  <span class="tiny-mark"><img src="../app/assets/peel_icon.png" alt="" /></span>
+                  <span>Peel</span>
+                </div>
+                <div class="window-status"><span></span>本机 · 就绪</div>
+                <div class="window-dots"><i></i><i></i><i></i></div>
+              </div>
+              <div class="window-body">
+                <div class="window-heading">
+                  <div>
+                    <span class="window-kicker">QUICK CUTOUT</span>
+                    <strong>去掉背景，留下重点。</strong>
+                  </div>
+                  <span class="window-counter">01 / 01</span>
+                </div>
+                <div class="preview-pair" data-demo="before">
+                  <div class="preview-card preview-before">
+                    <span class="preview-label">原图</span>
+                    <div class="art-scene">
+                      <span class="art-sun"></span>
+                      <span class="art-shadow"></span>
+                      <span class="art-subject"></span>
+                      <span class="art-leaf leaf-one"></span>
+                      <span class="art-leaf leaf-two"></span>
+                    </div>
+                  </div>
+                  <div class="preview-arrow">→</div>
+                  <div class="preview-card preview-after">
+                    <span class="preview-label">透明结果</span>
+                    <div class="checker-scene">
+                      <span class="art-shadow"></span>
+                      <span class="art-subject"></span>
+                      <span class="art-leaf leaf-one"></span>
+                      <span class="art-leaf leaf-two"></span>
+                    </div>
+                  </div>
+                </div>
+                <div class="window-bottom">
+                  <span class="file-pill"><b></b> product-shot.png</span>
+                  <span class="export-pill">导出 PNG <span>↗</span></span>
+                </div>
+              </div>
+            </div>
+            <div class="visual-caption">
+              <div class="demo-switch" role="group" aria-label="预览切换">
+                <button type="button" class="is-active" data-preview="before">原图</button>
+                <button type="button" data-preview="after">抠图后</button>
+              </div>
+              <span>界面预览 · 真实处理在桌面端完成</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="signal-bar section-pad reveal" aria-label="产品特点概览">
+          <div class="signal-item"><strong>本机</strong><span>图片留在电脑里</span></div>
+          <div class="signal-line"></div>
+          <div class="signal-item"><strong>批量</strong><span>一次处理一组图片</span></div>
+          <div class="signal-line"></div>
+          <div class="signal-item"><strong>透明</strong><span>PNG 结果直接可用</span></div>
+        </section>
+
+        <section class="section-pad features-section" id="features">
+          <div class="section-heading reveal">
+            <div>
+              <span class="section-index">01 / 能力</span>
+              <h2>把重复的修图动作，<br /><em>变成一次拖拽。</em></h2>
+            </div>
+            <p>从一张图片到一整个文件夹，Peel 把常用的去背景流程收进一个不打扰你的窗口。</p>
+          </div>
+
+          <div class="feature-grid">
+            <article class="feature-card feature-card-dark reveal">
+              <div class="card-topline"><span>01</span><span class="card-mark">◌</span></div>
+              <div class="feature-icon icon-local"><i></i><i></i><i></i></div>
+              <h3>本机处理</h3>
+              <p>基于本地模型推理，照片不必先上传到陌生网站。断网时也能使用已准备好的模型。</p>
+              <span class="card-foot">LOCAL FIRST</span>
+            </article>
+            <article class="feature-card feature-card-mint reveal reveal-delay-1">
+              <div class="card-topline"><span>02</span><span class="card-mark">↗</span></div>
+              <div class="feature-icon icon-stack"><i></i><i></i><i></i></div>
+              <h3>多图批处理</h3>
+              <p>拖入多张图片，网格查看进度；全部完成后一次导出，不用一张一张重复点击。</p>
+              <span class="card-foot">BATCH READY</span>
+            </article>
+            <article class="feature-card feature-card-orange reveal reveal-delay-2">
+              <div class="card-topline"><span>03</span><span class="card-mark">✦</span></div>
+              <div class="feature-icon icon-edge"><i></i><i></i><i></i></div>
+              <h3>边缘可修</h3>
+              <p>自动结果不够理想时，进入修补页圈选、擦除、恢复，让最后一点细节听你的。</p>
+              <span class="card-foot">FIX THE LAST 1%</span>
+            </article>
+          </div>
+        </section>
+
+        <section class="workflow-section" id="workflow">
+          <div class="section-pad workflow-inner">
+            <div class="section-heading workflow-heading reveal">
+              <div>
+                <span class="section-index">02 / 怎么用</span>
+                <h2>三步，<em>干净收尾。</em></h2>
+              </div>
+              <p>没有复杂时间线，没有学习成本。把注意力留给图片本身。</p>
+            </div>
+
+            <div class="steps-list">
+              <div class="step reveal">
+                <span class="step-number">01</span>
+                <div class="step-symbol step-drag"><span>↓</span></div>
+                <div class="step-copy"><h3>拖入图片</h3><p>单张、多张都可以。也支持点击打开或从剪贴板粘贴。</p></div>
+                <span class="step-arrow">↗</span>
+              </div>
+              <div class="step reveal reveal-delay-1">
+                <span class="step-number">02</span>
+                <div class="step-symbol step-spark"><span>✦</span></div>
+                <div class="step-copy"><h3>自动去背景</h3><p>本地引擎在后台处理，界面保持轻快；模型可以按场景切换。</p></div>
+                <span class="step-arrow">↗</span>
+              </div>
+              <div class="step reveal reveal-delay-2">
+                <span class="step-number">03</span>
+                <div class="step-symbol step-export"><span>↑</span></div>
+                <div class="step-copy"><h3>导出结果</h3><p>导出透明 PNG、WebP 或其他格式，也可以直接拖到其他软件。</p></div>
+                <span class="step-arrow">↗</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="details-section section-pad" id="details">
+          <div class="details-layout">
+            <div class="details-intro reveal">
+              <span class="section-index">03 / 给在意细节的人</span>
+              <h2>小工具，<br /><em>也要有自己的秩序。</em></h2>
+              <p>Peel 用 Python、PySide6、rembg 和 ONNX Runtime 组成一条本机工作流。引擎和界面分进程运行，处理图片时窗口不会被卡住。</p>
+              <a class="quiet-link quiet-link-dark" href="#download">查看项目结构 <span>↓</span></a>
+            </div>
+            <div class="detail-list reveal reveal-delay-1">
+              <div class="detail-row"><span>桌面框架</span><strong>Python + PySide6</strong><b>01</b></div>
+              <div class="detail-row"><span>推理方式</span><strong>rembg + ONNX Runtime</strong><b>02</b></div>
+              <div class="detail-row"><span>输出方式</span><strong>PNG / WebP / JPEG / TIFF</strong><b>03</b></div>
+              <div class="detail-row"><span>运行系统</span><strong>Windows 10 / 11</strong><b>04</b></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="download-section section-pad" id="download">
+          <div class="download-card reveal">
+            <div class="download-copy">
+              <span class="section-index">READY WHEN YOU ARE</span>
+              <h2>从一张图片开始。</h2>
+              <p>这是一个本机运行的 Windows 工具。下载完整安装包后，按向导安装即可开始。</p>
+              <div class="download-actions">
+                <a class="button button-light" href="https://github.com/wyf-777/win-bg-tool/releases/latest/download/Peel-Setup-1.0.0.exe">下载 Windows 安装包 <span>↓</span></a>
+                <a class="download-text-link" href="https://github.com/wyf-777/win-bg-tool" target="_blank" rel="noreferrer">查看 GitHub 源码 <span>↗</span></a>
+                <a class="download-text-link" href="../README.md">阅读 README <span>→</span></a>
+              </div>
+            </div>
+            <div class="download-aside">
+              <div class="terminal-card">
+                <div class="terminal-top"><span></span><span></span><span></span><small>快速启动</small></div>
+                <code><i>›</i> python -m app.main</code>
+                <button type="button" class="copy-button" data-copy="python -m app.main">复制命令</button>
+              </div>
+              <span class="download-caption">安装包包含运行依赖 · Windows x64</span>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer class="site-footer section-pad">
+        <div class="footer-brand"><span class="brand-icon"><img src="../app/assets/peel_icon.png" alt="" /></span><strong>Peel</strong></div>
+        <span>Windows 本地图片去背景工具</span>
+        <span class="footer-right"><a href="https://github.com/wyf-777/win-bg-tool" target="_blank" rel="noreferrer">GitHub 源码 ↗</a><span class="footer-slogan">Built for the images that matter.</span></span>
+      </footer>
+    </div>
+
+    <script src="script.js"></script>
+  </body>
+</html>
