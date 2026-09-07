@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -38,15 +39,25 @@ _models_dir_cache: Path | None = None
 
 def models_dir() -> Path:
     """
-    Directory for ONNX models (U2NET_HOME).
-    Writable: next to exe when packaged; project/models in development.
+    Writable directory for ONNX models (U2NET_HOME).
+
+    Frozen builds use the current user's Local AppData because the normal
+    installer location (Program Files) is not writable after installation.
+    Development builds continue to use project/models.
 
     Cached after first call so settings UI status probes do not mkdir every time.
     """
     global _models_dir_cache
     if _models_dir_cache is not None:
         return _models_dir_cache
-    path = app_root() / "models"
+    if is_frozen():
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        if local_app_data:
+            path = Path(local_app_data) / "Peel" / "models"
+        else:
+            path = Path.home() / "AppData" / "Local" / "Peel" / "models"
+    else:
+        path = app_root() / "models"
     path.mkdir(parents=True, exist_ok=True)
     _models_dir_cache = path
     return path
@@ -63,6 +74,7 @@ def ensure_bundled_models() -> None:
         return
     candidates = [
         bundle_root() / "models" / BUNDLED_MODEL_FILE,
+        # Migration path for older frozen builds that stored models next to exe.
         app_root() / "models" / BUNDLED_MODEL_FILE,
     ]
     for src in candidates:

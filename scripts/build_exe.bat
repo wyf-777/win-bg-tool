@@ -21,7 +21,7 @@ echo.
 echo Done. Output:
 echo   dist\Peel\Peel.exe
 echo   dist\Peel\_internal\   ^(REQUIRED - ship whole folder^)
-echo   dist\Peel\models\u2netp.onnx  ^(shipped U2-Net lite^)
+echo   dist\Peel\_internal\models\u2netp.onnx  ^(shipped U2-Net lite^)
 echo.
 echo Ship the entire dist\Peel\ directory. Do NOT copy only Peel.exe.
 echo Packaging notes / checklist: docs\packaging.md

@@ -191,6 +191,19 @@ a = Analysis(
     noarchive=False,
 )
 
+# Qt6Core on Windows links against the Windows ICU shim (icuuc.dll). A build
+# machine may also expose a third-party ICU on PATH (for example Poppler's
+# ICU 78); PyInstaller can accidentally collect that same-named DLL and Qt
+# then fails at startup with WinError 127 (procedure not found). Let Windows
+# provide its own ICU shim and drop any data DLL pulled in only by the foreign
+# ICU runtime.
+a.binaries = [
+    entry
+    for entry in a.binaries
+    if Path(str(entry[0])).name.lower() != "icuuc.dll"
+    and not Path(str(entry[0])).name.lower().startswith("icudt")
+]
+
 # Prefer our defensive sessions __init__ over the copy from collect_all("rembg")
 _override_src = str((root / "packaging" / "rembg_sessions" / "__init__.py").resolve()).lower()
 _filtered = []

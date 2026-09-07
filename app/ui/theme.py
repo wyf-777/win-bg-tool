@@ -741,6 +741,27 @@ def build_stylesheet(c: ThemeColors) -> str:
         background: transparent;
         margin-top: 4px;
     }}
+    /* Model guidance content uses the shared FAQ accordion row styling. */
+    #ModelGuideLead,
+    #ModelGuideFooter {{
+        color: {c.muted};
+        font-size: 12px;
+        background: transparent;
+    }}
+    #ModelGuideTag {{
+        color: {c.primary};
+        background: {c.button_hover};
+        border: 1px solid {c.card_border};
+        border-radius: 6px;
+        padding: 5px 8px;
+        font-size: 12px;
+        font-weight: 600;
+    }}
+    #ModelGuideText {{
+        color: {c.text};
+        font-size: 12px;
+        background: transparent;
+    }}
     /* FAQ accordion — no panel chrome (no fill / no outer box) */
     #FaqPanel {{
         background: transparent;

@@ -122,6 +122,23 @@ _FAQ_ITEMS: tuple[tuple[str, str], ...] = (
     ),
 )
 
+# Practical model guidance shown above the FAQ list. These are starting
+# points rather than hard rules: the best model still depends on the image.
+_MODEL_GUIDE_ITEMS: tuple[tuple[str, str], ...] = (
+    (
+        "动漫 / 插画",
+        "优先试「ISNet 动漫」，二次元角色和插画的线条、色块边缘通常更合适。",
+    ),
+    (
+        "人像 / 发丝",
+        "优先试「BiRefNet 通用」，再开启「Alpha Matting（边缘更细，更慢）」；发丝和细边缘通常会更好。",
+    ),
+    (
+        "其他场景",
+        "作者日常一般使用通用或轻量模型：通用优先效果，轻量优先速度。模型作者没有全部试完，欢迎自行探索。",
+    ),
+)
+
 _CHEVRON_COLLAPSED = "›"
 _CHEVRON_EXPANDED = "˅"
 # Smooth expand / collapse (ms)
@@ -278,6 +295,80 @@ class _FaqAccordionItem(QFrame):
         self.chevron.setText(
             _CHEVRON_EXPANDED if self._expanded else _CHEVRON_COLLAPSED
         )
+
+
+class _ModelGuideAccordionItem(_FaqAccordionItem):
+    """Model recommendations rendered as the first collapsible FAQ item."""
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(0, "模型选择建议", "", parent)
+        # Keep the guide in the exact same accordion row style as the FAQ items.
+        # The base class already assigns the shared FaqAccordionItem object name.
+
+        body_l = self.body_host.layout()
+        if body_l is None:  # pragma: no cover - created in _FaqAccordionItem
+            return
+        body_l.removeWidget(self.body_label)
+        self.body_label.deleteLater()
+
+        self.guide_body = QWidget()
+        self.guide_body.setObjectName("ModelGuideAccordionBody")
+        self.guide_body.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum
+        )
+        guide_l = QVBoxLayout(self.guide_body)
+        guide_l.setContentsMargins(0, 0, 0, 0)
+        guide_l.setSpacing(10)
+
+        lead = QLabel(
+            "不同图片可以先按下面的方向尝试；模型之间没有绝对答案，欢迎用自己的素材对比。"
+        )
+        lead.setObjectName("ModelGuideLead")
+        lead.setWordWrap(True)
+        guide_l.addWidget(lead)
+
+        for label, description in _MODEL_GUIDE_ITEMS:
+            row = QHBoxLayout()
+            row.setContentsMargins(0, 0, 0, 0)
+            row.setSpacing(10)
+
+            tag = QLabel(label)
+            tag.setObjectName("ModelGuideTag")
+            tag.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            tag.setMinimumWidth(82)
+            tag.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Preferred)
+
+            body = QLabel(description)
+            body.setObjectName("ModelGuideText")
+            body.setWordWrap(True)
+            body.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+
+            row.addWidget(tag, 0, Qt.AlignmentFlag.AlignTop)
+            row.addWidget(body, 1)
+            guide_l.addLayout(row)
+
+        footer = QLabel(
+            "有问题欢迎及时反馈，我会继续把这个开源工具做得更好。"
+            "觉得好用的话，也欢迎赞赏支持一下，非常感谢各位义父义母！"
+        )
+        footer.setObjectName("ModelGuideFooter")
+        footer.setWordWrap(True)
+        footer.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        guide_l.addWidget(footer)
+        body_l.insertWidget(0, self.guide_body)
+
+    def _body_target_height(self) -> int:
+        """Measure the custom recommendation body at the current width."""
+        w = self.body_host.width()
+        if w < 40:
+            w = self.width() if self.width() > 40 else 320
+        inner = max(80, w - 28)  # body margins 14+14
+        self.guide_body.setFixedWidth(inner)
+        guide_l = self.guide_body.layout()
+        if guide_l is not None:
+            guide_l.activate()
+        self.guide_body.adjustSize()
+        return int(self.guide_body.sizeHint().height()) + 12
 
 
 class SettingsPage(QWidget):
@@ -1316,6 +1407,11 @@ class SettingsPage(QWidget):
         list_l.setSpacing(0)
 
         self._faq_items: list[_FaqAccordionItem] = []
+        guide = _ModelGuideAccordionItem()
+        guide.expanded_changed.connect(self._on_faq_item_expanded)
+        self._faq_items.append(guide)
+        list_l.addWidget(guide)
+
         for i, (q, a) in enumerate(_FAQ_ITEMS, start=1):
             item = _FaqAccordionItem(i, q, a)
             item.expanded_changed.connect(self._on_faq_item_expanded)

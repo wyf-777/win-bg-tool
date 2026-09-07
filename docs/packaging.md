@@ -57,12 +57,11 @@ scripts\build_installer.bat
 ```
 dist\Peel\
   Peel.exe              # 启动入口（窗口程序，无控制台）
-  models\u2netp.onnx    # 旁路副本（部分路径会读到）
   _internal\            # 运行时依赖（必须整目录带走）
     models\u2netp.onnx  # 包内只读资源（_MEIPASS）
     rembg\ numpy\ cv2\ onnxruntime\ ...
 
-dist\Peel-Setup-1.0.0.exe   # 安装程序（选路径安装，推荐分发这个）
+dist\Peel-Setup-1.0.1.exe   # 安装程序（选路径安装，推荐分发这个）
 ```
 
 **便携分发**时必须整包复制 `dist\Peel\` 文件夹，禁止只拷贝 `Peel.exe`。  
@@ -94,10 +93,11 @@ dist\Peel-Setup-1.0.0.exe   # 安装程序（选路径安装，推荐分发这�
 
 | 函数 | 冻结后含义 | 用途 |
 |------|------------|------|
-| `app_root()` | `Peel.exe` 所在目录 | 可写：`models\`、用户配置 |
+| `app_root()` | `Peel.exe` 所在目录 | 安装目录定位与旧版模型迁移 |
 | `bundle_root()` | `sys._MEIPASS`（即 `_internal`） | 只读：内置权重、收集的库 |
+| `models_dir()` | `%LOCALAPPDATA%\Peel\models\` | 可写模型目录与 `U2NET_HOME` |
 
-启动时 `ensure_bundled_models()` 把包内 `u2netp.onnx` 复制到 exe 旁 `models\`，供 `U2NET_HOME` / rembg 下载逻辑使用。
+启动时 `ensure_bundled_models()` 把包内 `u2netp.onnx` 复制到 `%LOCALAPPDATA%\Peel\models\`，供 `U2NET_HOME` / rembg 下载逻辑使用，也避免 Program Files 权限问题。
 
 ### 2.3 打包默认模型
 
@@ -264,8 +264,8 @@ Select-String -Path "$b\rembg\sessions\__init__.py" -Pattern "Peel packaging ove
 
 - [ ] 双击 `Peel.exe` 能启动主界面  
 - [ ] 拖入一张 jpg/png，**能出抠图结果**（不再报 cannot import remove）  
-- [ ] 首次运行后，exe 旁出现/更新 `models\u2netp.onnx`  
-- [ ] （可选）设置里切换其它模型：需联网下载到 `models\`  
+- [ ] 首次运行后，`%LOCALAPPDATA%\Peel\models\u2netp.onnx` 出现且大小正常
+- [ ] （可选）设置里切换其它模型：需联网下载到 `%LOCALAPPDATA%\Peel\models\`
 
 ### C. 出问题后如何拿真实堆栈
 
@@ -326,10 +326,10 @@ from rembg import remove, new_session
 ## 8. 分发与用户侧注意
 
 1. **整目录分发** `dist\Peel\`（zip 整个文件夹），或只发 **`Peel-Setup-*.exe`**  
-2. 解压路径尽量短、无奇怪权限；避免只读介质当「可写 models 目录」  
+2. 解压路径尽量短、无奇怪权限；模型写入 `%LOCALAPPDATA%\Peel\models\`
 3. 杀软可能拦截未知 exe / 大量 DLL：首次运行允许  
 4. 「更快处理」依赖本机 DirectML/CUDA 等，失败会回落 CPU（见 F14 设计），与打包完整性无关  
-5. 其它大模型首次切换仍需联网下载到 exe 旁 `models\`  
+5. 其它大模型首次切换仍需联网下载到 `%LOCALAPPDATA%\Peel\models\`
 6. **安装包必须用当前源码重打的 `dist\Peel\`**，不要拿很久以前的目录只重跑 Inno（见 §11）
 
 ---

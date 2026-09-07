@@ -1,6 +1,7 @@
 # win-bg-tool: Python 3.11+
 PySide6-Essentials>=6.6
 rembg==2.0.56
-onnxruntime>=1.16,<1.17
+# ONNX Runtime 1.16 has no Windows wheel for Python 3.12.
+onnxruntime>=1.17,<2.0
 numpy>=1.26,<2.0
 Pillow>=10.0

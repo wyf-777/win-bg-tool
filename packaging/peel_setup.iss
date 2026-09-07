@@ -5,7 +5,7 @@
 ; Requires: dist\Peel\ from PyInstaller (scripts\build_exe.bat)
 
 #define MyAppName "Peel"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.0.1"
 #define MyAppPublisher "wyf-777"
 #define MyAppURL "https://github.com/wyf-777/win-bg-tool"
 #define MyAppExeName "Peel.exe"
