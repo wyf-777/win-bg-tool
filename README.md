@@ -2,6 +2,8 @@
 
 Windows **本机**图片去背景小工具。对标 Peel 的使用强度，**不**复刻 Glaze / Mac 架构。
 
+宣传网页：[https://wyf-777.github.io/win-bg-tool/](https://wyf-777.github.io/win-bg-tool/)
+
 ## 当前阶段
 
 **主路径已完成，可日常使用**（引擎 + GUI + 多图 + 设置 + 剪贴板 + 修补 + 加速 + 文件夹监视 + 打包 + 进程隔离推理）。
